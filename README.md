@@ -58,8 +58,11 @@ The server will start at `http://localhost:7788`. Open this URL in your browser 
 1. Open a canvas in Figma
 2. Right-click on a blank area
 3. Select plugins → development → import plugin from manifest
-4. Select the manifest.json file from the project root directory
-5. Click on any component to see the preview in your browser
+4. Select the manifest.json file from the project root directory to complete the import
+5. Then select Brige from the same menu to open the plugin
+6. Click on any component to see the preview in your browser
+
+![Figma Plugin Usage](https://github.com/kingkongshot/Figma-Bridge/blob/main/public/images/instruction1.png?raw=true)
 
 ### Viewing Output
 

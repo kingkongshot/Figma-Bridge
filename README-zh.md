@@ -59,8 +59,11 @@ npm run dev
 1. 在 Figma 中打开一个画布
 2. 空白处点击右键
 3. 选择 plugins → development → import plugin from manifest
-4. 然后选择本项目根目录的 manifest.json 文件即可
-5. 点击任意组件即可在浏览器中看到预览
+4. 然后选择本项目根目录的 manifest.json 文件即可完成导入
+5. 然后在同级菜单选择 Brige 打开插件
+6. 点击任意组件即可在浏览器中看到预览
+
+![Figma Plugin Usage](https://github.com/kingkongshot/Figma-Bridge/blob/main/public/images/instruction1.png?raw=true)
 
 ### 查看输出
 
