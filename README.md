@@ -61,14 +61,9 @@ The server will start at `http://localhost:7788`. Open this URL in your browser 
 4. Select the manifest.json file from the project root directory
 5. Click on any component to see the preview in your browser
 
-### Configuration
+### Viewing Output
 
-Create a `.env` file in the project root:
-
-```env
-# Enable debug mode to save output files
-BRIDGE_DEBUG=1
-```
+The generated HTML/CSS files are automatically saved to the `output/` directory in real-time. You can open `output/index.html` in your browser to view the exported result.
 
 ## Project Structure
 
