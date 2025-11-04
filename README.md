@@ -7,6 +7,8 @@ English | [简体中文](README-zh.md)
 
 Transform Figma designs into LLM-friendly HTML/CSS, empowering non-technical users to achieve high-fidelity design implementation with AI assistance.
 
+![Showcase](https://github.com/kingkongshot/Figma-Bridge/blob/main/public/images/showcase.png?raw=true)
+
 ## What is Figma Bridge?
 
 Figma Bridge is a Figma-to-code conversion tool designed specifically for AI-assisted development. It parses Figma designs into clean, semantic HTML/CSS that is highly optimized for Large Language Models (LLMs), enabling AI to accurately understand design intent and assist in achieving high-fidelity implementation.

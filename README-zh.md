@@ -7,6 +7,8 @@
 
 将 Figma 设计稿解析为 LLM 友好的 HTML/CSS，让 AI 帮助非技术人员实现设计高保真还原。
 
+![Showcase](https://github.com/kingkongshot/Figma-Bridge/blob/main/public/images/showcase.png?raw=true)
+
 ## 这是什么？
 
 Figma Bridge 是一个专为 AI 辅助开发设计的 Figma 到代码转换工具。它将 Figma 设计解析为结构清晰、语义化的 HTML/CSS，这些代码对大语言模型（LLM）极其友好，使得 AI 能够准确理解设计意图并协助实现高保真还原。
