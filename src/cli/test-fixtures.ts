@@ -6,7 +6,7 @@
  Optional meta.json: { thresholdPercent?: number, maxSizeDeltaPercent?: number, notes?: string }
 
  Usage:
-  npm run test-fixtures -- [--fixtures fixtures] [--pattern name-substring] [--threshold 2.5] [--size-tolerance-percent 2.5] [--server http://localhost:3000] [--timeout-ms 15000]
+  npm run test-fixtures -- [--fixtures fixtures] [--pattern name-substring] [--threshold 2.5] [--size-tolerance-percent 2.5] [--server http://localhost:7788] [--timeout-ms 15000]
 
  Preconditions:
    - Backend running with BRIDGE_DEBUG=1 (so html-render.png is written)
@@ -74,7 +74,7 @@ function parseArgs(argv: string[]): CliArgs {
   let pattern: string | null = null;
   let thresholdPercent = 3.0;
   let maxSizeDeltaPercent = 2.5;
-  let server = 'http://localhost:3000';
+  let server = 'http://localhost:7788';
   let timeoutMs = 15000;
 
   for (let i = 2; i < argv.length; i++) {

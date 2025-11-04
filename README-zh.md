@@ -52,7 +52,7 @@ npm install
 npm run dev
 ```
 
-服务器将在 `http://localhost:3000` 启动。在浏览器中打开此 URL 以访问预览界面。
+服务器将在 `http://localhost:7788` 启动。在浏览器中打开此 URL 以访问预览界面。
 
 ### 使用 Figma 插件
 
@@ -69,9 +69,6 @@ npm run dev
 ```env
 # 启用调试模式以保存输出文件
 BRIDGE_DEBUG=1
-
-# 服务器端口（默认：3000）
-PORT=3000
 ```
 
 ## 项目结构

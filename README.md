@@ -51,7 +51,7 @@ npm install
 npm run dev
 ```
 
-The server will start at `http://localhost:3000`. Open this URL in your browser to access the preview interface.
+The server will start at `http://localhost:7788`. Open this URL in your browser to access the preview interface.
 
 ### Using the Figma Plugin
 
@@ -68,9 +68,6 @@ Create a `.env` file in the project root:
 ```env
 # Enable debug mode to save output files
 BRIDGE_DEBUG=1
-
-# Server port (default: 3000)
-PORT=3000
 ```
 
 ## Project Structure

@@ -1,7 +1,7 @@
 /*
  Minimal CLI to post a composition JSON to the running backend,
  so the server generates latest HTML and debug artifacts.
- Usage: npm run render-json -- <json-path> [--server http://localhost:3000]
+ Usage: npm run render-json -- <json-path> [--server http://localhost:7788]
 */
 
 import fs from 'fs';
@@ -13,7 +13,7 @@ type AnyObj = Record<string, any>;
 
 function parseArgs(argv: string[]): { file: string | null; server: string } {
   let file: string | null = null;
-  let server = 'http://localhost:3000';
+  let server = 'http://localhost:7788';
 
   for (let i = 2; i < argv.length; i++) {
     const a = argv[i];
@@ -93,7 +93,7 @@ function httpPostJson(urlStr: string, json: AnyObj): Promise<{ status: number; b
 async function main() {
   const { file, server } = parseArgs(process.argv);
   if (!file) {
-    console.error('Usage: npm run render-json -- <json-path> [--server http://localhost:3000]');
+    console.error('Usage: npm run render-json -- <json-path> [--server http://localhost:7788]');
     process.exit(1);
   }
 

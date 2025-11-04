@@ -40,7 +40,7 @@ function loadEnvFile() {
 loadEnvFile();
 
 const app = express();
-const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
+const PORT = 7788;
 
 const corsOptions: cors.CorsOptions = {
   origin: true,
@@ -473,7 +473,7 @@ app.post('/api/composition', async (req, res) => {
       renderUnion: irResult.renderUnion,
       googleFontsUrl: globalSettings.useOnlineFonts ? irResult.fontMeta.googleFontsUrl : null,
       chineseFontsUrls: globalSettings.useOnlineFonts ? irResult.fontMeta.chineseFontsUrls : [],
-      debugEnabled: DEBUG_ENABLED,
+      debugEnabled: true,
     });
     try {
       ensurePreviewAssetsDir();

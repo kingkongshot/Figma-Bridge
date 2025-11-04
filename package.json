@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "npm run kill-port && nodemon --exec ts-node src/index.ts",
     "dev:clean": "npm run kill-port && nodemon --exec ts-node src/index.ts --watch src --ext ts,json",
-    "kill-port": "lsof -ti:3000 | xargs kill -9 2>/dev/null || true",
+    "kill-port": "lsof -ti:7788 | xargs kill -9 2>/dev/null || true",
     "build": "tsc",
     "start": "node dist/index.js",
     "render-json": "ts-node src/cli/render-json.ts",
