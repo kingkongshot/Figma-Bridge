@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="zh">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BRIDGE — PLUGIN</title>
+    <style>
+      :root {
+        --bg: #ffffff;
+        --fg: #000000;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--fg);
+        font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        font-size: 12px;
+        display: grid;
+        grid-template-rows: 1fr;
+        height: 100vh;
+      }
+      main {
+        padding: 16px;
+        display: grid;
+        gap: 16px;
+      }
+      .status {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border: 1px solid #000;
+        padding: 12px;
+        font-weight: 600;
+      }
+      .status span {
+        font-weight: 400;
+        letter-spacing: 0.03em;
+      }
+      .log {
+        padding: 4px 0;
+        font-weight: 500;
+        letter-spacing: 0.02em;
+        min-height: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="status">Server <span id="conn">CHECKING…</span></div>
+      <div class="log" id="log"></div>
+    </main>
+
+    <script>
+      const server = 'http://localhost:3000';
+      const connEl = document.getElementById('conn');
+      const logEl = document.getElementById('log');
+
+      async function ping() {
+        try {
+          const res = await fetch(server + '/health', { cache: 'no-store' });
+          if (res.ok) {
+            connEl.textContent = 'LINKED';
+          } else {
+            throw new Error('bad status');
+          }
+        } catch (e) {
+          connEl.textContent = 'OFFLINE';
+        }
+      }
+
+      // 简单的一次性导出等待器
+      let pendingExportResolve = null;
+      async function requestExportMissing(ids) {
+        return new Promise((resolve) => {
+          pendingExportResolve = resolve;
+          parent.postMessage({ pluginMessage: { type: 'export-missing-images', ids } }, '*');
+        });
+      }
+
+      // SVG 导出等待器
+      let pendingSvgExportResolve = null;
+      async function requestExportMissingSvgs(nodeIds) {
+        return new Promise((resolve) => {
+          pendingSvgExportResolve = resolve;
+          parent.postMessage({ pluginMessage: { type: 'export-missing-svgs', nodeIds } }, '*');
+        });
+      }
+
+      // Request Figma native render (ground truth)
+      let pendingPreviewResolve = null;
+      async function requestFigmaRender() {
+        return new Promise((resolve) => {
+          pendingPreviewResolve = resolve;
+          // 新事件名
+          parent.postMessage({ pluginMessage: { type: 'export-figma-render' } }, '*');
+        });
+      }
+
+      window.onmessage = async (event) => {
+        const msg = event.data && event.data.pluginMessage;
+        if (!msg) return;
+        if (msg.type === 'send-composition') {
+          const comp = msg.composition || null;
+          const imageIds = Array.isArray(msg.imageIds) ? msg.imageIds : [];
+          const hasChildren = comp && Array.isArray(comp.children) && comp.children.length > 0;
+          logEl.textContent = hasChildren ? `COMPOSITION — ${comp.children.length} NODES` : 'COMPOSITION — EMPTY';
+          if (hasChildren) {
+            console.log('[UI] Received composition:', JSON.stringify(comp, null, 2).substring(0, 500));
+          }
+          if (!hasChildren) return; // 不再发送空 composition，避免 400 噪音
+          try {
+            // ============ 1) 图片缺失检查与增量上传 ============
+            if (imageIds.length > 0) {
+              let missing = imageIds;
+              try {
+                const resp = await fetch(server + '/api/images/check', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ ids: imageIds })
+                });
+                if (resp.ok) {
+                  const data = await resp.json();
+                  missing = Array.isArray(data && data.missing) ? data.missing : [];
+                } else {
+                  // 失败则保守视为全部缺失
+                  missing = imageIds;
+                }
+              } catch (e) {
+                console.warn('[UI] /api/images/check failed, fallback to full export', e);
+                missing = imageIds;
+              }
+
+              if (missing.length > 0) {
+                // 请求插件导出缺失图片
+                const exportResult = await requestExportMissing(missing);
+                const items = Array.isArray(exportResult && exportResult.items) ? exportResult.items : [];
+                if (items.length > 0) {
+                  await fetch(server + '/api/images/batch', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ items })
+                  });
+                }
+              }
+            }
+            // ============ 2) SVG 缺失检查与增量上传 ============
+            try {
+              // 收集 composition 中的 svgContent，计算稳定 svgId（FNV-1a + sanitize）
+              function fnv1a(str) {
+                let h = 2166136261 >>> 0;
+                for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+                return h.toString(36);
+              }
+              function sanitizeId(raw) { return String(raw || '').replace(/[^a-zA-Z0-9_-]/g, '_'); }
+              const svgNodes = [];
+              function walk(n) {
+                if (!n || n.visible === false) return;
+                if (typeof n.svgContent === 'string' && n.svgContent) {
+                  const svgId = sanitizeId(fnv1a(n.svgContent));
+                  console.log(`[UI] Found SVG node ${n.id}: svgId=${svgId}, content length=${n.svgContent.length}`);
+                  svgNodes.push({ nodeId: n.id, svgId });
+                } else if (n.type && ['VECTOR', 'POLYGON', 'STAR', 'ELLIPSE'].includes(n.type)) {
+                  console.warn(`[UI] Vector node ${n.id} (${n.type}) has no svgContent!`);
+                }
+                if (Array.isArray(n.children)) n.children.forEach(walk);
+              }
+              (Array.isArray(comp.children) ? comp.children : []).forEach(walk);
+              const svgIds = Array.from(new Set(svgNodes.map(x => x.svgId)));
+              console.log(`[UI] Collected ${svgNodes.length} SVG nodes, ${svgIds.length} unique IDs`);
+              if (svgIds.length > 0) {
+                // 向服务器查询缺失 SVG
+                let missingSvgIds = svgIds;
+                try {
+                  console.log(`[UI] Checking ${svgIds.length} SVG IDs with server...`);
+                  const r = await fetch(server + '/api/svgs/check', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: svgIds })
+                  });
+                  if (r.ok) {
+                    const data = await r.json();
+                    missingSvgIds = Array.isArray(data && data.missing) ? data.missing : [];
+                    console.log(`[UI] Server reports ${missingSvgIds.length} missing SVGs:`, missingSvgIds);
+                  } else {
+                    console.error(`[UI] SVG check failed: ${r.status}`);
+                  }
+                } catch (e) { 
+                  console.error('[UI] SVG check error:', e);
+                  missingSvgIds = svgIds; 
+                }
+
+                if (missingSvgIds.length > 0) {
+                  // 选择需要导出的节点 id（nodeId 与 svgId 的映射在 svgNodes）
+                  const exportNodeIds = svgNodes.filter(x => missingSvgIds.includes(x.svgId)).map(x => x.nodeId);
+                  console.log(`[UI] Requesting export for ${exportNodeIds.length} nodes:`, exportNodeIds);
+                  const exportResult = await requestExportMissingSvgs(exportNodeIds);
+                  const items = Array.isArray(exportResult && exportResult.items) ? exportResult.items : [];
+                  console.log(`[UI] Received ${items.length} exported SVG items`);
+                  if (items.length > 0) {
+                    console.log('[UI] Uploading SVGs to server...');
+                    const uploadResp = await fetch(server + '/api/svgs/batch', {
+                      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items })
+                    });
+                    if (uploadResp.ok) {
+                      const uploadData = await uploadResp.json();
+                      console.log('[UI] SVG upload result:', uploadData);
+                    } else {
+                      console.error(`[UI] SVG upload failed: ${uploadResp.status}`);
+                    }
+                  }
+                } else {
+                  console.log('[UI] All SVGs already exist on server');
+                }
+
+                // 用 svgId 替换 svgContent
+                function rewrite(n) {
+                  if (!n || n.visible === false) return;
+                  if (typeof n.svgContent === 'string' && n.svgContent) {
+                    const svgId = sanitizeId(fnv1a(n.svgContent));
+                    n.svgId = svgId; delete n.svgContent;
+                  }
+                  if (Array.isArray(n.children)) n.children.forEach(rewrite);
+                }
+                (Array.isArray(comp.children) ? comp.children : []).forEach(rewrite);
+              }
+            } catch (e) {
+              console.warn('[UI] SVG incremental upload failed or skipped:', e);
+            }
+            // Get Figma render first (for comparison)
+            let figmaRender = null;
+            try {
+              const prev = await requestFigmaRender();
+              const base64 = (prev && typeof prev.base64 === 'string') ? prev.base64 : '';
+              if (base64 && base64.length > 0) {
+                const MAX_BASE64_CHARS = 8_000_000; // ~6MB raw
+                if (base64.length <= MAX_BASE64_CHARS) {
+                  figmaRender = { base64 };
+                } else {
+                  console.warn('[UI] Figma render too large, skip');
+                }
+              }
+            } catch (e) {
+              // Figma render is optional
+            }
+            
+            // Send composition with Figma render
+            await fetch(server + '/api/composition', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ 
+                composition: comp,
+                figmaRender: figmaRender
+              })
+            });
+          } catch (e) {
+            console.warn('[UI] Failed to send composition', e);
+          }
+        } else if (msg.type === 'export-missing-images:result') {
+          if (typeof pendingExportResolve === 'function') {
+            pendingExportResolve({ items: Array.isArray(msg.items) ? msg.items : [] });
+            pendingExportResolve = null;
+          }
+        } else if (msg.type === 'export-missing-svgs:result') {
+          if (typeof pendingSvgExportResolve === 'function') {
+            pendingSvgExportResolve({ items: Array.isArray(msg.items) ? msg.items : [] });
+            pendingSvgExportResolve = null;
+          }
+        } else if (msg.type === 'export-figma-render:result') {
+          if (typeof pendingPreviewResolve === 'function') {
+            const base64 = (msg && typeof msg.base64 === 'string') ? msg.base64 : '';
+            pendingPreviewResolve({ base64 });
+            pendingPreviewResolve = null;
+          }
+        }
+      };
+
+      ping();
+      setInterval(ping, 3000);
+    </script>
+  </body>
+</html>

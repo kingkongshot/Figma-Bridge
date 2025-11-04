@@ -1,0 +1,97 @@
+/* ============================================
+   Top Toolbar
+   ============================================ */
+
+.top-toolbar {
+  height: var(--toolbar-height);
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: none;
+  flex-shrink: 0;
+  background: rgba(0, 0, 0, 0.02);
+}
+
+body.dark .top-toolbar {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.toolbar-btn {
+  background: transparent;
+  border: none;
+  color: var(--fg);
+  cursor: pointer;
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.2s ease, background-color 0.3s ease, color 0.3s ease;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.toolbar-btn:hover {
+  opacity: 0.7;
+}
+
+.toolbar-btn img,
+.toolbar-btn span {
+  width: 16px;
+  height: 16px;
+  display: block;
+  transition: filter 0.3s ease;
+}
+
+/* Toggle button states */
+#sidebarToggle {
+  display: none;
+}
+
+main.sidebar-collapsed #sidebarToggle {
+  display: flex;
+}
+
+#propertiesToggle {
+  display: none;
+}
+
+main.properties-collapsed #propertiesToggle {
+  display: flex;
+}
+
+/* Hide properties toggle in views that don't have properties panel */
+main.no-properties-view #propertiesToggle {
+  display: none !important;
+}
+
+/* Active state for toggle buttons */
+.toolbar-btn.active {
+  background: rgba(4, 153, 255, 0.10);
+  border-radius: 4px;
+}
+
+body.dark .toolbar-btn.active {
+  background: rgba(4, 153, 255, 0.18);
+}
+
+.toolbar-btn.active img {
+  opacity: 1;
+}

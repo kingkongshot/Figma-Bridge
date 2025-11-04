@@ -1,0 +1,53 @@
+{
+  "name": "figma-bridge",
+  "version": "1.0.0",
+  "description": "Bridge from Figma designs to code with NodeIR data model",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "npm run kill-port && nodemon --exec ts-node src/index.ts",
+    "dev:clean": "npm run kill-port && nodemon --exec ts-node src/index.ts --watch src --ext ts,json",
+    "kill-port": "lsof -ti:3000 | xargs kill -9 2>/dev/null || true",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "render-json": "ts-node src/cli/render-json.ts",
+    "render-ir": "ts-node src/cli/render-ir.ts",
+    "render-content": "ts-node src/cli/render-content.ts",
+    "diff-images": "ts-node src/cli/diff-images.ts",
+    "test-fixtures": "ts-node src/cli/test-fixtures.ts",
+    "lint": "eslint src/**/*.ts",
+    "lint:fix": "eslint src/**/*.ts --fix"
+  },
+  "keywords": [
+    "figma",
+    "design-to-code",
+    "nodeir"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/js-beautify": "^1.14.3",
+    "@types/multer": "^1.4.11",
+    "@types/node": "^20.11.24",
+    "@types/pixelmatch": "^5.2.6",
+    "@typescript-eslint/eslint-plugin": "^7.1.1",
+    "@typescript-eslint/parser": "^7.1.1",
+    "eslint": "^8.57.0",
+    "nodemon": "^3.1.0",
+    "prettier": "^3.2.5",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.2"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.18.3",
+    "css-to-tailwindcss": "^1.0.5",
+    "html-to-image": "^1.11.13",
+    "js-beautify": "^1.15.4",
+    "linkedom": "^0.18.12",
+    "multer": "^1.4.5-lts.1",
+    "pixelmatch": "^7.1.0",
+    "pngjs": "^7.0.0"
+  }
+}

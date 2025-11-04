@@ -1,0 +1,126 @@
+/* ============================================
+   Base: Variables, Reset, Main Layout
+   ============================================ */
+
+/* CSS Variables */
+:root {
+  /* Theme tokens (bg/fg/border/stage/button) are set by JS from Settings. */
+  --render-stroke: #f7b500;
+  --element-stroke: #0499ff;
+  --highlight-color: #0d99ff;
+  --toolbar-height: 48px;
+}
+
+body.dark {
+  /* Keep only debug stroke overrides; theme colors now set via JS */
+  --render-stroke: #ffd447;
+  --element-stroke: #0499ff;
+}
+
+/* Global Reset */
+html, body { height: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, sans-serif;
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+/* Main Layout Grid */
+main {
+  padding: 0;
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: 48px 280px 1fr 320px;
+  gap: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+main.sidebar-collapsed { 
+  grid-template-columns: 48px 0 1fr 320px; 
+}
+
+main.properties-collapsed { 
+  grid-template-columns: 48px 280px 1fr 0; 
+}
+
+main.sidebar-collapsed.properties-collapsed { 
+  grid-template-columns: 48px 0 1fr 0; 
+}
+
+/* Center Column */
+.center-column {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Content Panel */
+.content-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.content-panel.hidden {
+  display: none;
+}
+
+/* ============================================
+   Code Highlighting Line Numbers (Global)
+   ============================================ */
+
+.hljs-ln {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.hljs-ln td.hljs-ln-numbers {
+  text-align: center !important;
+  color: rgba(0, 0, 0, 0.3);
+  border-right: 1px solid rgba(0, 0, 0, 0.1);
+  vertical-align: top;
+  padding-right: 24px !important;
+  padding-left: 24px !important;
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  width: 1% !important;
+  white-space: nowrap;
+}
+
+.hljs-ln-numbers .hljs-ln-n {
+  display: inline;
+}
+
+.hljs-ln-numbers .hljs-ln-n::before {
+  content: attr(data-line-number);
+}
+
+body.dark .hljs-ln td.hljs-ln-numbers {
+  color: rgba(255, 255, 255, 0.3);
+  border-right-color: rgba(255, 255, 255, 0.1);
+}
+
+.hljs-ln td.hljs-ln-code {
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+/* Override highlight.js theme padding */
+pre code.hljs {
+  padding: 0 !important;
+}
+
+code.hljs {
+  padding: 0 !important;
+}

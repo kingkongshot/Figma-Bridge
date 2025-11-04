@@ -1,0 +1,522 @@
+/* ============================================
+   Properties Panel (Right sidebar)
+   ============================================ */
+
+/* Properties panel */
+.properties {
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-size: 11px;
+}
+main.properties-collapsed .properties {
+  visibility: hidden;
+  pointer-events: none;
+}
+.properties .title {
+  display: none;
+}
+.properties .sidebar-header {
+  justify-content: flex-end;
+  flex-shrink: 0;
+}
+.properties .content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 12px;
+  font-size: 11px;
+  line-height: 1.6;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.properties .content .empty {
+  opacity: 0.5;
+  text-align: center;
+  padding: 40px 20px;
+}
+.properties .prop-section {
+  border-bottom: 1px solid var(--border);
+  padding: 12px 0;
+}
+.properties .prop-section:last-child {
+  border-bottom: none;
+}
+.properties .prop-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+.properties .prop-header-icons {
+  display: flex;
+  gap: 4px;
+}
+.properties .prop-section-title {
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 11px;
+  opacity: 0.9;
+}
+.properties .prop-subsection {
+  margin-bottom: 16px;
+}
+.properties .prop-subsection:last-child {
+  margin-bottom: 0;
+}
+.properties .prop-subsection-label {
+  font-size: 11px;
+  font-weight: 400;
+  opacity: 0.5;
+  margin-bottom: 8px;
+}
+.properties .prop-section-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  box-sizing: border-box;
+}
+.properties .alignment-buttons {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  box-sizing: border-box;
+}
+.properties .alignment-group {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2px;
+  flex: 1;
+}
+.properties .align-btn {
+  background: rgba(0,0,0,0.03);
+  border: none;
+  padding: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease;
+  border-radius: 4px;
+  min-height: 32px;
+}
+body.dark .properties .align-btn {
+  background: rgba(255,255,255,0.05);
+}
+.properties .align-btn:hover {
+  background: rgba(0,0,0,0.08);
+}
+body.dark .properties .align-btn:hover {
+  background: rgba(255,255,255,0.12);
+}
+.properties .align-btn img,
+.properties .align-btn span[data-colorized] {
+  width: 14px;
+  height: 14px;
+  opacity: 0.5;
+}
+.properties .align-btn.more-btn span {
+  font-size: 16px;
+  font-weight: 300;
+  opacity: 0.5;
+  line-height: 1;
+}
+.properties .flow-buttons {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 2px;
+  width: 100%;
+  box-sizing: border-box;
+}
+.properties .flow-btn {
+  background: rgba(0,0,0,0.03);
+  border: none;
+  padding: 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease;
+  border-radius: 4px;
+  min-height: 36px;
+}
+body.dark .properties .flow-btn {
+  background: rgba(255,255,255,0.05);
+}
+.properties .flow-btn:hover {
+  background: rgba(0,0,0,0.08);
+}
+body.dark .properties .flow-btn:hover {
+  background: rgba(255,255,255,0.12);
+}
+.properties .flow-btn.active {
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+body.dark .properties .flow-btn.active {
+  background: rgba(255,255,255,0.15);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+}
+.properties .flow-btn img,
+.properties .flow-btn span[data-colorized] {
+  width: 16px;
+  height: 16px;
+  opacity: 0.5;
+}
+.properties .flow-btn.active img,
+.properties .flow-btn.active span[data-colorized] {
+  opacity: 0.8;
+}
+.properties .prop-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 400;
+  text-transform: none;
+}
+.properties .prop-checkbox input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+}
+.properties .alignment-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2px;
+  width: 108px;
+  box-sizing: border-box;
+  flex-shrink: 0;
+}
+.properties .align-grid-btn {
+  background: rgba(0,0,0,0.03);
+  border: none;
+  padding: 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+  border-radius: 4px;
+  color: rgba(0,0,0,0.3);
+  aspect-ratio: 1;
+}
+body.dark .properties .align-grid-btn {
+  background: rgba(255,255,255,0.05);
+  color: rgba(255,255,255,0.3);
+}
+.properties .align-grid-btn:hover {
+  background: rgba(0,0,0,0.08);
+  color: rgba(0,0,0,0.6);
+}
+body.dark .properties .align-grid-btn:hover {
+  background: rgba(255,255,255,0.12);
+  color: rgba(255,255,255,0.6);
+}
+.properties .align-grid-btn.active {
+  background: rgba(0,0,0,0.08);
+}
+body.dark .properties .align-grid-btn.active {
+  background: rgba(255,255,255,0.12);
+}
+.properties .align-grid-btn img,
+.properties .align-grid-btn span[data-colorized] {
+  display: block;
+  width: 12px;
+  height: 12px;
+  opacity: 0.3;
+}
+.properties .align-grid-btn.active img,
+.properties .align-grid-btn.active span[data-colorized] {
+  opacity: 1;
+}
+.properties .resizing-col {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(0,0,0,0.03);
+  padding: 8px 12px;
+  border-radius: 6px;
+  min-height: 32px;
+}
+body.dark .properties .resizing-col {
+  background: rgba(255,255,255,0.05);
+}
+.properties .resizing-label {
+  font-size: 11px;
+  font-weight: 500;
+  opacity: 0.4;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+.properties .resizing-number {
+  font-size: 11px;
+  font-family: 'SF Mono', Monaco, monospace;
+  color: var(--fg);
+  flex-shrink: 0;
+}
+.properties .resizing-mode {
+  flex: 1;
+  font-size: 11px;
+  color: var(--fg);
+  text-align: center;
+}
+.properties .align-gap-header {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.properties .align-gap-header .prop-subsection-label:first-child {
+  flex: 0 0 auto;
+  width: 108px;
+}
+.properties .align-gap-header .prop-subsection-label:last-child {
+  flex: 1;
+}
+.properties .align-gap-content {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.properties .gap-controls {
+  flex: 1;
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.properties .prop-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.properties .prop-checkbox-inline {
+  width: 14px;
+  height: 14px;
+  margin-right: 4px;
+  cursor: pointer;
+}
+.properties .prop-icon-btn-small {
+  background: none;
+  border: none;
+  padding: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.5;
+  transition: opacity 0.15s ease;
+}
+.properties .prop-icon-btn-small:hover {
+  opacity: 1;
+}
+.properties .prop-icon-btn-small img {
+  width: 12px;
+  height: 12px;
+  filter: var(--icon-filter);
+}
+.properties .fill-item {
+  margin-bottom: 8px;
+}
+.properties .fill-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  background: rgba(0,0,0,0.03);
+  border-radius: 6px;
+}
+body.dark .properties .fill-row {
+  background: rgba(255,255,255,0.05);
+}
+.properties .color-swatch {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  border: 1px solid rgba(0,0,0,0.1);
+  flex-shrink: 0;
+}
+body.dark .properties .color-swatch {
+  border-color: rgba(255,255,255,0.1);
+}
+.properties .fill-color-input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  font-size: 11px;
+  font-family: 'SF Mono', Monaco, monospace;
+  color: var(--fg);
+  padding: 4px;
+}
+.properties .fill-opacity-input {
+  width: 40px;
+  background: transparent;
+  border: none;
+  font-size: 11px;
+  font-family: 'SF Mono', Monaco, monospace;
+  color: var(--fg);
+  text-align: right;
+  padding: 4px;
+}
+.properties .fill-percent {
+  font-size: 11px;
+  opacity: 0.5;
+}
+.properties .prop-select {
+  flex: 1;
+  background: rgba(0,0,0,0.03);
+  border: none;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 11px;
+  color: var(--fg);
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M3 5l3 3 3-3' stroke='currentColor' stroke-width='1.5' fill='none'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  padding-right: 28px;
+}
+body.dark .properties .prop-select {
+  background-color: rgba(255,255,255,0.05);
+}
+.properties .prop-row-inline {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  width: 100%;
+  box-sizing: border-box;
+  min-width: 0;
+}
+.properties .prop-input-group {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(0,0,0,0.03);
+  border: none;
+  padding: 8px 10px;
+  border-radius: 6px;
+  box-sizing: border-box;
+  min-height: 32px;
+}
+body.dark .properties .prop-input-group {
+  background: rgba(255,255,255,0.05);
+}
+.properties .prop-input-group label {
+  font-size: 11px;
+  font-weight: 500;
+  opacity: 0.4;
+  text-transform: uppercase;
+  letter-spacing: 0;
+  flex-shrink: 0;
+}
+.properties .prop-input-group .input-icon,
+.properties .prop-input-group span[data-colorized].input-icon {
+  width: 12px;
+  height: 12px;
+  opacity: 0.4;
+  flex-shrink: 0;
+}
+.properties .prop-input-group input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-size: 11px;
+  font-family: 'SF Mono', Monaco, monospace;
+  color: var(--fg);
+  text-align: left;
+  padding: 0;
+  width: 100%;
+}
+.properties .prop-input-group.rotation-input input {
+  text-align: right;
+}
+.properties .prop-icon-btn {
+  background: rgba(0,0,0,0.03);
+  border: none;
+  padding: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  transition: background 0.15s ease;
+  border-radius: 6px;
+}
+body.dark .properties .prop-icon-btn {
+  background: rgba(255,255,255,0.05);
+}
+.properties .prop-icon-btn:hover {
+  background: rgba(0,0,0,0.08);
+}
+body.dark .properties .prop-icon-btn:hover {
+  background: rgba(255,255,255,0.12);
+}
+.properties .prop-icon-btn img,
+.properties .prop-icon-btn span[data-colorized] {
+  width: 14px;
+  height: 14px;
+  opacity: 0.5;
+}
+.properties .prop-group {
+  margin-bottom: 16px;
+}
+.properties .prop-group-title {
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 10px;
+  margin-bottom: 8px;
+  opacity: 0.7;
+}
+.properties .prop-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 0;
+  gap: 12px;
+}
+.properties .prop-label {
+  opacity: 0.6;
+  flex-shrink: 0;
+}
+.properties .prop-value {
+  text-align: right;
+  word-break: break-word;
+  font-family: 'SF Mono', Monaco, monospace;
+}
+.properties .font-missing {
+  color: #ff3b30;
+  font-weight: 600;
+}
+.properties .font-weight-warning {
+  color: #ff9500;
+  font-weight: 600;
+  cursor: help;
+  border-bottom: 1px dotted #ff9500;
+}
+.properties .color-swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 1px solid var(--border);
+  vertical-align: middle;
+  margin-left: 4px;
+}

@@ -1,0 +1,20 @@
+{
+  "watch": ["src"],
+  "ext": "ts,json",
+  "ignore": [
+    "src/**/*.spec.ts",
+    "src/**/*.test.ts",
+    "node_modules"
+  ],
+  "exec": "ts-node",
+  "env": {
+    "NODE_ENV": "development"
+  },
+  "delay": "1000",
+  "verbose": false,
+  "restartable": "rs",
+  "events": {
+    "start": "echo '🚀 Server starting...'",
+    "restart": "echo '🔄 Server restarting due to changes...'"
+  }
+}

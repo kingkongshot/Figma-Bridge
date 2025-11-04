@@ -1,0 +1,61 @@
+/* ============================================
+   Activity Bar (Left-most vertical bar)
+   ============================================ */
+
+.activity-bar {
+  background: rgba(0, 0, 0, 0.04);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0;
+  gap: 4px;
+}
+
+body.dark .activity-bar {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.activity-btn {
+  width: 48px;
+  height: 48px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  transition: background 0.2s ease;
+}
+
+.activity-btn:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+body.dark .activity-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.activity-btn.active {
+  background: rgba(4, 153, 255, 0.10);
+}
+
+body.dark .activity-btn.active {
+  background: rgba(4, 153, 255, 0.18);
+}
+
+.activity-btn img,
+.activity-btn span {
+  width: 16px;
+  height: 16px;
+  opacity: 0.6;
+  transition: opacity 0.2s ease;
+}
+
+.activity-btn:hover img,
+.activity-btn.active img,
+.activity-btn:hover span,
+.activity-btn.active span {
+  opacity: 1;
+}

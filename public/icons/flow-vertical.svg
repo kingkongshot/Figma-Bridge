@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none">
+  <!-- standardized: S=4, G=3, squares at y=3 and y=10 -->
+  <rect x="3" y="3" width="4" height="4" rx="0.6" stroke="currentColor" stroke-width="1.2"/>
+  <rect x="3" y="10" width="4" height="4" rx="0.6" stroke="currentColor" stroke-width="1.2"/>
+  <!-- long arrow equals 2*S+G (3 -> 14), clearance to boxes = 5px -->
+  <path d="M12 3V14" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+  <path d="M10.8 12.8L12 14l1.2-1.2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

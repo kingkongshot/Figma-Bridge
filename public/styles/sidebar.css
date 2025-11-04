@@ -1,0 +1,360 @@
+/* ============================================
+   Left Sidebar (Layers, Files, Settings)
+   ============================================ */
+
+.left-sidebar {
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-size: 11px;
+  position: relative;
+}
+
+.sidebar-header {
+  height: var(--toolbar-height);
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.left-sidebar .sidebar-header {
+  justify-content: flex-start;
+}
+
+body.dark .sidebar-header {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.sidebar-header.hidden {
+  display: none;
+}
+
+.sidebar-search-btn {
+  background: transparent;
+  border: none;
+  padding: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.2s ease;
+}
+
+.sidebar-search-btn:hover {
+  opacity: 0.7;
+}
+
+.sidebar-search-btn img,
+.sidebar-search-btn span {
+  width: 16px;
+  height: 16px;
+  display: block;
+}
+
+.sidebar-collapse-btn {
+  background: transparent;
+  border: none;
+  padding: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.2s ease;
+}
+
+.sidebar-collapse-btn:hover {
+  opacity: 0.7;
+}
+
+.sidebar-collapse-btn img,
+.sidebar-collapse-btn span {
+  width: 16px;
+  height: 16px;
+  display: block;
+}
+
+main.sidebar-collapsed .left-sidebar {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.view-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.view-panel.hidden {
+  display: none;
+}
+
+.view-panel .sidebar-header {
+  flex-shrink: 0;
+}
+
+.view-panel .content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.view-panel .content .filter {
+  height: var(--toolbar-height);
+  padding: 0 12px;
+  display: none;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.view-panel .content .filter.active {
+  display: flex;
+}
+
+.view-panel .content .filter input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg);
+  background: transparent;
+  border: none;
+  outline: none;
+}
+
+/* Layers List */
+.view-panel .content .list {
+  list-style: none;
+  margin: 0;
+  padding: 6px 0;
+  flex: 1;
+  min-height: 0;
+}
+
+.view-panel .content .item { 
+  padding: 8px 12px; 
+  cursor: default; 
+  display: flex; 
+  align-items: center; 
+  border-left: 3px solid transparent; 
+  gap: 6px; 
+}
+
+.view-panel .content .item:hover { 
+  background: rgba(0,0,0,0.06); 
+}
+
+body.dark .view-panel .content .item:hover { 
+  background: rgba(255,255,255,0.08); 
+}
+
+.view-panel .content .item.selected { 
+  border-left-color: #0499ff; 
+  background: rgba(4,153,255,0.10); 
+  font-weight: 700; 
+}
+
+body.dark .view-panel .content .item.selected { 
+  background: rgba(4,153,255,0.18); 
+}
+
+.view-panel .content .item.indent-1 { padding-left: 28px; }
+.view-panel .content .item.indent-2 { padding-left: 44px; }
+.view-panel .content .item.indent-3 { padding-left: 60px; }
+.view-panel .content .item.indent-4 { padding-left: 76px; }
+.view-panel .content .item.indent-5 { padding-left: 92px; }
+
+.list .type-icon {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  opacity: 0.5;
+}
+
+.list .item.selected .type-icon {
+  opacity: 0.7;
+}
+
+.list .toggle-btn {
+  cursor: pointer;
+  user-select: none;
+  flex-shrink: 0;
+  width: 12px;
+  height: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 8px;
+  opacity: 0.6;
+  transition: transform 0.15s ease, opacity 0.2s ease;
+}
+
+.list .toggle-btn:hover { 
+  opacity: 1; 
+}
+
+.list .item.collapsed .toggle-btn { 
+  transform: rotate(-90deg); 
+}
+
+.list .toggle-spacer {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
+
+.list .item-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.list .list.children {
+  overflow: hidden;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  transform-origin: top;
+}
+
+.list .item.collapsed + .list.children {
+  display: none;
+}
+
+/* File Tree */
+.view-panel .content .file-tree {
+  flex: 1;
+  padding: 6px 0;
+}
+
+.file-tree .empty {
+  padding: 40px 20px;
+  text-align: center;
+  opacity: 0.5;
+  font-size: 11px;
+}
+
+.file-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-left: 3px solid transparent;
+  transition: background 0.15s ease;
+}
+
+.file-item:hover {
+  background: rgba(0,0,0,0.06);
+}
+
+body.dark .file-item:hover {
+  background: rgba(255,255,255,0.08);
+}
+
+.file-item.selected {
+  border-left-color: #0499ff;
+  background: rgba(4,153,255,0.10);
+  font-weight: 700;
+}
+
+body.dark .file-item.selected {
+  background: rgba(4,153,255,0.18);
+}
+
+.file-icon {
+  width: 14px;
+  height: 14px;
+  opacity: 0.5;
+  flex-shrink: 0;
+}
+
+/* Code Editor */
+.code-editor {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg);
+}
+
+.code-header {
+  height: var(--toolbar-height);
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  border-bottom: none;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.code-filename {
+  opacity: 0.7;
+}
+
+.code-content {
+  flex: 1;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+.code-content code {
+  background: transparent !important;
+}
+
+/* Settings Navigation */
+.view-panel .content .settings-nav {
+  flex: 1;
+  padding: 6px 0;
+}
+
+.nav-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-left: 3px solid transparent;
+  transition: background 0.15s ease;
+}
+
+.nav-item:hover {
+  background: rgba(0,0,0,0.06);
+}
+
+body.dark .nav-item:hover {
+  background: rgba(255,255,255,0.08);
+}
+
+.nav-item.active {
+  border-left-color: #0499ff;
+  background: rgba(4,153,255,0.10);
+  font-weight: 700;
+}
+
+body.dark .nav-item.active {
+  background: rgba(4,153,255,0.18);
+}

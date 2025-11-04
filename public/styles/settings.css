@@ -1,0 +1,442 @@
+/* ============================================
+   Settings Page
+   ============================================ */
+
+.settings-content-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 32px 24px;
+}
+
+.settings-section {
+  margin-bottom: 64px;
+}
+
+.settings-section h2 {
+  margin: 0 0 32px 0;
+  font-size: 20px;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: -0.02em;
+  color: var(--fg);
+  display: block !important;
+  width: 100% !important;
+  clear: both;
+  float: none !important;
+  position: relative !important;
+}
+
+.setting-group {
+  margin-bottom: 32px;
+  width: 100%;
+  display: block;
+  clear: both;
+}
+
+.setting-label {
+  margin-bottom: 12px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  opacity: 0.5;
+  line-height: 1;
+  display: block;
+  width: 100%;
+}
+
+.setting-options {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.setting-option {
+  padding: 8px 16px;
+  background: rgba(0,0,0,0.04);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--fg);
+  transition: all 0.15s ease;
+}
+
+body.dark .setting-option {
+  background: rgba(255,255,255,0.04);
+}
+
+.setting-option:hover {
+  background: rgba(0,0,0,0.08);
+  border-color: rgba(0,0,0,0.2);
+}
+
+body.dark .setting-option:hover {
+  background: rgba(255,255,255,0.08);
+  border-color: rgba(255,255,255,0.2);
+}
+
+.setting-option.active {
+  background: rgba(4,153,255,0.10);
+  border-color: #0499ff;
+}
+
+body.dark .setting-option.active {
+  background: rgba(4,153,255,0.18);
+}
+
+.setting-option .check {
+  opacity: 0;
+}
+
+.setting-option.active .check {
+  opacity: 1;
+  color: #0499ff;
+}
+
+.setting-description {
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  opacity: 0.6;
+  color: var(--fg);
+}
+
+/* Color Settings */
+.color-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: 100%;
+}
+
+.color-setting-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.color-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fg);
+  opacity: 0.8;
+}
+
+.color-input-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.color-input {
+  flex: 1;
+  max-width: 200px;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-family: 'SF Mono', Monaco, monospace;
+  background: rgba(0,0,0,0.04);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--fg);
+  outline: none;
+  transition: all 0.15s ease;
+}
+
+body.dark .color-input {
+  background: rgba(255,255,255,0.04);
+}
+
+.color-input:focus {
+  border-color: #0499ff;
+  background: rgba(4,153,255,0.05);
+}
+
+.color-preview {
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.color-reset-btn {
+  background: transparent;
+  border: none;
+  padding: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  color: var(--fg);
+  opacity: 0.5;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.color-reset-btn:hover {
+  opacity: 1;
+  background: rgba(0,0,0,0.05);
+}
+
+body.dark .color-reset-btn:hover {
+  background: rgba(255,255,255,0.08);
+}
+
+.color-reset-btn svg {
+  display: block;
+}
+
+/* About Header - horizontal layout */
+.about-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 24px;
+  width: 100%;
+  flex-wrap: wrap;
+}
+
+/* About Contact Group - email, Twitter and GitHub stacked vertically */
+.about-contact-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.contact-group-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  opacity: 0.5;
+  margin-bottom: 4px;
+  color: var(--fg);
+}
+
+.contact-email {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.contact-label-text {
+  font-size: 13px;
+  color: var(--fg);
+  opacity: 0.8;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.contact-link {
+  font-size: 13px;
+  color: #0499ff;
+  text-decoration: none;
+  transition: opacity 0.15s ease;
+}
+
+.contact-link:hover {
+  opacity: 0.7;
+}
+
+.about-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: rgba(0,0,0,0.04);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  text-decoration: none;
+  color: var(--fg);
+  transition: all 0.15s ease;
+}
+
+body.dark .about-link {
+  background: rgba(255,255,255,0.04);
+}
+
+.about-link:hover {
+  background: rgba(0,0,0,0.08);
+  border-color: rgba(0,0,0,0.2);
+  transform: translateX(4px);
+}
+
+body.dark .about-link:hover {
+  background: rgba(255,255,255,0.08);
+  border-color: rgba(255,255,255,0.2);
+}
+
+.about-link .link-icon {
+  width: 20px;
+  height: 20px;
+  opacity: 0.5;
+  filter: var(--icon-filter);
+}
+
+.about-link.twitter-widget,
+.about-link.github-widget {
+  padding: 0;
+  background: transparent;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.about-link.twitter-widget:hover,
+.about-link.github-widget:hover {
+  background: transparent;
+  border: none;
+  transform: none;
+}
+
+/* About QR Group - contains multiple QR codes */
+.about-qr-group {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
+/* About QR Code */
+.about-qr {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.about-qr .qr-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--fg);
+  opacity: 0.5;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.about-qr .qr-image {
+  width: 100px;
+  height: 100px;
+  display: inline-block;
+}
+
+.about-info {
+  padding: 20px;
+  background: rgba(0,0,0,0.02);
+  border-radius: 4px;
+  font-size: 13px;
+  line-height: 1.6;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+body.dark .about-info {
+  background: rgba(255,255,255,0.02);
+}
+
+.about-info p {
+  margin: 0 0 8px 0;
+  word-wrap: break-word;
+}
+
+.about-info .version {
+  opacity: 0.6;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.about-info .version .license-link {
+  color: #0499ff;
+  text-decoration: none;
+  transition: opacity 0.15s ease;
+}
+
+.about-info .version .license-link:hover {
+  opacity: 0.7;
+}
+
+
+/* Cache Management */
+.cache-stats {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  background: rgba(0,0,0,0.04);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: 'SF Mono', Monaco, monospace;
+  max-width: fit-content;
+}
+
+body.dark .cache-stats {
+  background: rgba(255,255,255,0.04);
+}
+
+.cache-stat-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--fg);
+}
+
+.cache-stat-item.total {
+  padding-top: 12px;
+  margin-top: 4px;
+  border-top: 1px solid var(--border);
+  font-weight: 600;
+}
+
+.cache-stat-item .stat-label {
+  flex-shrink: 0;
+  opacity: 0.6;
+  min-width: 90px;
+}
+
+.cache-stat-item .stat-value {
+  min-width: 60px;
+  text-align: right;
+}
+
+.cache-stat-item .stat-size {
+  opacity: 0.5;
+  margin-left: auto;
+}
+
+.clear-cache-btn {
+  padding: 12px 24px;
+  background: rgba(255, 59, 48, 0.10);
+  border: 1px solid rgba(255, 59, 48, 0.3);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: #ff3b30;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.clear-cache-btn:hover:not(:disabled) {
+  background: rgba(255, 59, 48, 0.15);
+  border-color: rgba(255, 59, 48, 0.5);
+}
+
+.clear-cache-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

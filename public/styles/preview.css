@@ -1,0 +1,94 @@
+/* ============================================
+   Preview Area (Canvas & Iframe)
+   ============================================ */
+
+.stage-wrap {
+  border: none;
+  background: var(--stage-bg);
+  overflow: hidden;
+  display: block;
+  width: 100%;
+  height: 100%;
+  flex: 1;
+  position: relative;
+  box-sizing: border-box;
+  min-height: 0;
+}
+
+iframe#previewFrame { 
+  border: 0; 
+  background: transparent; 
+  position: absolute; 
+  top: 0; 
+  left: 0; 
+  transform-origin: top left; 
+}
+
+.overlay-host {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: top left;
+  pointer-events: none;
+  z-index: var(--bridge-debug-z);
+}
+
+/* Debug overlay styles */
+:root {
+  --bridge-debug-blue: #0499ff;
+  --bridge-debug-alpha: 0.25;
+  --bridge-debug-z: 999999;
+  --bridge-scale: 1;
+}
+
+.overlay-host .debug-layer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: var(--bridge-debug-z);
+  isolation: isolate;
+}
+
+.overlay-host .debug-node {
+  position: absolute;
+  box-sizing: border-box;
+  outline: calc(1px / var(--bridge-scale)) solid rgba(4, 153, 255, var(--bridge-debug-alpha, 0));
+  outline-offset: 0;
+  z-index: 0;
+}
+
+.overlay-host .debug-node.is-hover {
+  outline: calc(2px / var(--bridge-scale)) solid var(--bridge-debug-blue);
+  z-index: 1;
+}
+
+.overlay-host .debug-node.is-selected {
+  outline: calc(3px / var(--bridge-scale)) solid var(--bridge-debug-blue);
+  z-index: 2;
+}
+
+.overlay-host .debug-node { 
+  --bridge-stroke: calc(1px / var(--bridge-scale)); 
+}
+
+.overlay-host .debug-node.is-hover { 
+  --bridge-stroke: calc(2px / var(--bridge-scale)); 
+}
+
+.overlay-host .debug-node.is-selected { 
+  --bridge-stroke: calc(3px / var(--bridge-scale)); 
+}
+
+.overlay-host .debug-node[data-is-mask="true"] {
+  outline-style: dashed;
+}
+
+.overlay-host .debug-node[data-kind="dot"] {
+  outline: none !important;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: auto;
+}

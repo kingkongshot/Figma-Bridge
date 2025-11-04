@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none">
+  <!-- standardized: S=4, G=3, 2x2 grid at (3,3)/(10,3)/(3,10)/(10,10) -->
+  <rect x="3" y="3" width="4" height="4" rx="0.6" stroke="currentColor" stroke-width="1.2"/>
+  <rect x="10" y="3" width="4" height="4" rx="0.6" stroke="currentColor" stroke-width="1.2"/>
+  <rect x="3" y="10" width="4" height="4" rx="0.6" stroke="currentColor" stroke-width="1.2"/>
+  <rect x="10" y="10" width="4" height="4" rx="0.6" stroke="currentColor" stroke-width="1.2"/>
+</svg>

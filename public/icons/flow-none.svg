@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="none">
+  <!-- three staggered squares -->
+  <rect x="3" y="3" width="3.2" height="3.2" rx="0.6" stroke="currentColor" stroke-width="1.2"/>
+  <rect x="10" y="5" width="3.2" height="3.2" rx="0.6" stroke="currentColor" stroke-width="1.2"/>
+  <rect x="4.2" y="10" width="3.2" height="3.2" rx="0.6" stroke="currentColor" stroke-width="1.2"/>
+</svg>

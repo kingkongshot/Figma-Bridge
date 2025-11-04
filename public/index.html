@@ -1,0 +1,399 @@
+<!doctype html>
+<html lang="zh">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BRIDGE</title>
+    <script>
+      // Early theme boot: Settings is the single source of truth for theme tokens
+      (function () {
+        var defaultSettings = { 
+          colorBg: '#F3F4F1', 
+          colorFg: '#111111', 
+          textColorLight: '#111111',
+          textColorDark: '#F3F4F1',
+          language: 'en', 
+          useOnlineFonts: true 
+        };
+        var settings = defaultSettings;
+        try {
+          var raw = localStorage.getItem('bridge-settings');
+          settings = raw ? Object.assign({}, defaultSettings, JSON.parse(raw)) : defaultSettings;
+        } catch (e) {}
+
+        var theme = (function () {
+          try { return localStorage.getItem('bridge-preview-theme') === 'dark' ? 'dark' : 'light'; } catch (e) { return 'light'; }
+        })();
+
+        var root = document.documentElement;
+        function adjustBrightness(hex, percent) {
+          try {
+            var num = parseInt(hex.replace('#', ''), 16);
+            var r = (num >> 16) + Math.round(255 * percent);
+            var g = ((num >> 8) & 0x00FF) + Math.round(255 * percent);
+            var b = (num & 0x0000FF) + Math.round(255 * percent);
+            function clamp(x) { return Math.max(0, Math.min(255, x)); }
+            var out = (clamp(r) << 16) | (clamp(g) << 8) | clamp(b);
+            return '#' + (0x1000000 + out).toString(16).slice(1).toUpperCase();
+          } catch (e) { return hex; }
+        }
+
+        function mixColors(color1, color2, weight1) {
+          try {
+            var num1 = parseInt(color1.replace('#', ''), 16);
+            var num2 = parseInt(color2.replace('#', ''), 16);
+            var r1 = num1 >> 16;
+            var g1 = (num1 >> 8) & 0x00FF;
+            var b1 = num1 & 0x0000FF;
+            var r2 = num2 >> 16;
+            var g2 = (num2 >> 8) & 0x00FF;
+            var b2 = num2 & 0x0000FF;
+            var weight2 = 1 - weight1;
+            var r = Math.round(r1 * weight1 + r2 * weight2);
+            var g = Math.round(g1 * weight1 + g2 * weight2);
+            var b = Math.round(b1 * weight1 + b2 * weight2);
+            return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase();
+          } catch (e) { return color1; }
+        }
+
+        if (theme === 'dark') {
+          var textColor = settings.textColorDark || '#F3F4F1';
+          var borderColor = mixColors(settings.colorFg, textColor, 0.7);
+          root.style.setProperty('--bg', settings.colorFg);
+          root.style.setProperty('--fg', textColor);
+          root.style.setProperty('--border', borderColor);
+          root.style.setProperty('--stage-bg', settings.colorFg);
+          root.style.setProperty('--stage-border', textColor);
+          root.style.setProperty('--button-bg', textColor);
+          root.style.setProperty('--button-fg', settings.colorFg);
+          var el = document.getElementById('highlightTheme');
+          if (el) el.href = '/libs/styles/github-dark.min.css';
+        } else {
+          var textColor = settings.textColorLight || '#111111';
+          var borderColor = mixColors(settings.colorBg, textColor, 0.7);
+          root.style.setProperty('--bg', settings.colorBg);
+          root.style.setProperty('--fg', textColor);
+          root.style.setProperty('--border', borderColor);
+          root.style.setProperty('--stage-bg', settings.colorBg);
+          root.style.setProperty('--stage-border', textColor);
+          root.style.setProperty('--button-bg', textColor);
+          root.style.setProperty('--button-fg', settings.colorBg);
+          var el = document.getElementById('highlightTheme');
+          if (el) el.href = '/libs/styles/github.min.css';
+        }
+      })();
+    </script>
+    <!-- Base styles (must load first) -->
+    <link rel="stylesheet" href="/styles/base.css" />
+    <!-- Component styles (order independent) -->
+    <link rel="stylesheet" href="/styles/activity-bar.css" />
+    <link rel="stylesheet" href="/styles/toolbar.css" />
+    <link rel="stylesheet" href="/styles/sidebar.css" />
+    <link rel="stylesheet" href="/styles/properties.css" />
+    <link rel="stylesheet" href="/styles/preview.css" />
+    <link rel="stylesheet" href="/styles/settings.css" />
+    <link rel="stylesheet" href="/libs/styles/github-dark.min.css" id="highlightTheme" />
+  </head>
+  <body>
+    <main>
+      <aside class="activity-bar">
+        <button class="activity-btn active" id="layersBtn" title="Layers" data-i18n="sidebar.layers">
+          <img src="/icons/layout.svg" alt="Layers">
+        </button>
+        <button class="activity-btn" id="filesBtn" title="Files" data-i18n="sidebar.files">
+          <img src="/icons/file-html.svg" alt="Files">
+        </button>
+        <button class="activity-btn" id="activitySettingsBtn" title="Settings" data-i18n="sidebar.settings">
+          <img src="/icons/gear.svg" alt="Settings">
+        </button>
+      </aside>
+      <aside class="left-sidebar">
+        <div class="view-panel" id="layersView" data-view="layers">
+          <div class="sidebar-header">
+            <button class="sidebar-collapse-btn" id="sidebarCollapseBtn" title="Collapse Sidebar" data-i18n="sidebar.collapse">
+              <img src="/icons/sidebar.svg" alt="Collapse Sidebar">
+            </button>
+            <button class="sidebar-search-btn" id="searchToggleBtn" title="Search layers" data-i18n="sidebar.search">
+              <img src="/icons/search.svg" alt="Search">
+            </button>
+          </div>
+          <div class="content">
+            <div class="filter" id="layersFilter">
+              <input id="layerFilter" type="text" placeholder="Filter layers..." aria-label="Filter layers" data-i18n="sidebar.filter" />
+            </div>
+            <ul class="list" id="layersList"></ul>
+          </div>
+        </div>
+        
+        <div class="view-panel hidden" id="filesView" data-view="files">
+          <div class="sidebar-header">
+            <button class="sidebar-collapse-btn" title="Collapse Sidebar" data-i18n="sidebar.collapse">
+              <img src="/icons/sidebar.svg" alt="Collapse Sidebar">
+            </button>
+          </div>
+          <div class="content">
+            <div class="file-tree" id="fileTree">
+              <div class="empty" data-i18n="files.loading">Loading files...</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="view-panel hidden" id="settingsView" data-view="settings">
+          <div class="sidebar-header">
+            <button class="sidebar-collapse-btn" title="Collapse Sidebar" data-i18n="sidebar.collapse">
+              <img src="/icons/sidebar.svg" alt="Collapse Sidebar">
+            </button>
+          </div>
+          <div class="content">
+            <div class="settings-nav" id="settingsNav">
+              <div class="nav-item active" data-section="about">
+                <span data-i18n="settings.about">About</span>
+              </div>
+              <div class="nav-item" data-section="preferences">
+                <span data-i18n="settings.preferences">Preferences</span>
+              </div>
+              <div class="nav-item" data-section="cache">
+                <span data-i18n="settings.cache">Cache</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </aside>
+      
+      <div class="center-column">
+        <div class="top-toolbar">
+          <div class="toolbar-left">
+            <button class="toolbar-btn" id="sidebarToggle" title="Expand Sidebar" data-i18n="sidebar.expand">
+              <img src="/icons/sidebar-simple.svg" alt="Expand Sidebar">
+            </button>
+          </div>
+          <div class="toolbar-right">
+            <button class="toolbar-btn" id="toggleThemeBtn" title="Toggle Theme" data-i18n="toolbar.theme">
+              <img src="/icons/moon.svg" alt="Toggle Theme" id="themeIcon">
+            </button>
+            <button class="toolbar-btn" id="toggleBoundsBtn" title="Toggle Debug Overlay" data-i18n="toolbar.debug">
+              <img src="/icons/layout-grid.svg" alt="Toggle Bounds">
+            </button>
+            <button class="toolbar-btn" id="propertiesToggle" title="Expand Properties Panel" data-i18n="toolbar.properties">
+              <img src="/icons/sidebar-simple.svg" alt="Expand Properties" style="transform: scaleX(-1);">
+            </button>
+          </div>
+        </div>
+        
+        <div class="content-panel" id="canvasView" data-view="layers">
+          <div class="stage-wrap">
+            <iframe id="previewFrame" title="Bridge Render Preview" sandbox="allow-same-origin allow-scripts"></iframe>
+            <div id="overlayHost" class="overlay-host" aria-hidden="false"></div>
+          </div>
+        </div>
+        
+        <div class="content-panel hidden" id="codeView" data-view="files">
+          <div class="code-editor">
+            <div class="code-header">
+              <span class="code-filename" id="codeFilename" data-i18n="code.noFile">No file selected</span>
+            </div>
+            <pre class="code-content"><code class="language-html" id="codeContent" data-i18n="code.selectFile">Select a file to view its content</code></pre>
+          </div>
+        </div>
+        
+        <div class="content-panel hidden" id="settingsContentView" data-view="settings">
+          <div class="settings-content-scroll" id="settingsContentScroll">
+            <div class="settings-section" id="aboutSection" data-section="about">
+              <h2 data-i18n="settings.about">About</h2>
+
+              <div class="about-header">
+                <div class="about-contact-group">
+                  <div class="contact-group-label" data-i18n="settings.contact">CONTACT</div>
+                  <div class="contact-email">
+                    <span class="contact-label-text" data-i18n="settings.email">email</span>
+                    <a href="mailto:jojo@aisen.work" class="contact-link">jojo@aisen.work</a>
+                  </div>
+                  <div class="about-link twitter-widget">
+                    <a href="https://twitter.com/naaaarukaru?ref_src=twsrc%5Etfw" class="twitter-follow-button" data-show-count="false">Follow @naaaarukaru</a>
+                  </div>
+                  <div class="about-link github-widget">
+                    <iframe src="https://ghbtns.com/github-btn.html?user=twbs&repo=bootstrap&type=star&count=true&size=large" frameborder="0" scrolling="0" width="170" height="30" title="GitHub"></iframe>
+                  </div>
+                </div>
+                <div class="about-qr-group">
+                  <div class="about-qr">
+                    <div class="qr-label" data-i18n="settings.rednote">rednote</div>
+                    <img src="/images/RednoteQRCode.svg" alt="小红书 QR Code" class="qr-image">
+                  </div>
+                  <div class="about-qr">
+                    <div class="qr-label" data-i18n="settings.wechat">wechat</div>
+                    <img src="/images/wxQRCode.svg" alt="微信 QR Code" class="qr-image">
+                  </div>
+                </div>
+              </div>
+
+              <div class="about-info">
+                <p data-i18n="settings.description"></p>
+                <p class="version">
+                  <span data-i18n="settings.version">Version</span> 1.0.0 ·
+                  <a href="https://github.com/kingkongshot/Figma-Bridge/blob/main/LICENSE" target="_blank" rel="noopener noreferrer" class="license-link">
+                    <span data-i18n="settings.mitLicense">MIT License</span>
+                  </a>
+                </p>
+              </div>
+            </div>
+
+            <div class="settings-section" id="preferencesSection" data-section="preferences">
+              <h2 data-i18n="settings.preferences">Preferences</h2>
+
+              <div class="setting-group">
+                <div class="setting-label" data-i18n="preferences.language">Language</div>
+                <div class="setting-options" id="languageButtons">
+                  <!-- Language buttons will be dynamically generated here -->
+                </div>
+              </div>
+
+              <div class="setting-group">
+                <div class="setting-label" data-i18n="preferences.onlineFonts">Online Font Matching</div>
+                <div class="setting-options">
+                  <button class="setting-option active" id="useOnlineFontsToggle">
+                    <span data-i18n="preferences.enabled">Enabled</span>
+                    <span class="check">✓</span>
+                  </button>
+                </div>
+                <div class="setting-description" data-i18n="preferences.onlineFontsDesc">
+                  When enabled, fonts are loaded from Google Fonts if not available locally. When disabled, only local fonts are used with fallback to default fonts.
+                </div>
+              </div>
+
+              <div class="setting-group">
+                <div class="setting-label" data-i18n="preferences.theme">Theme</div>
+                <div class="setting-options">
+                  <button class="setting-option" data-theme="light">
+                    <span data-i18n="preferences.light">Light</span>
+                    <span class="check">✓</span>
+                  </button>
+                  <button class="setting-option" data-theme="dark">
+                    <span data-i18n="preferences.dark">Dark</span>
+                    <span class="check">✓</span>
+                  </button>
+                </div>
+              </div>
+
+              <div class="setting-group" id="lightColorGroup">
+                <div class="setting-label" data-i18n="preferences.lightColors">Light Theme Colors</div>
+                <div class="color-settings">
+                  <div class="color-setting-item">
+                    <label class="color-label" data-i18n="preferences.background">Background</label>
+                    <div class="color-input-group">
+                      <input type="text" class="color-input" id="colorBg" placeholder="#F3F4F1">
+                      <div class="color-preview" id="colorBgPreview"></div>
+                      <button class="color-reset-btn" id="resetColorBg" data-reset-color="colorBg" title="Reset to default" data-i18n="preferences.resetDefault" style="display: none;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                          <path d="M3 3v5h5"/>
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                  <div class="color-setting-item">
+                    <label class="color-label" data-i18n="preferences.textIcons">Text & Icons</label>
+                    <div class="color-input-group">
+                      <input type="text" class="color-input" id="textColorLight" placeholder="#111111">
+                      <div class="color-preview" id="textColorLightPreview"></div>
+                      <button class="color-reset-btn" id="resetTextColorLight" data-reset-color="textColorLight" title="Reset to default" data-i18n="preferences.resetDefault" style="display: none;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                          <path d="M3 3v5h5"/>
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="setting-group" id="darkColorGroup" style="display: none;">
+                <div class="setting-label" data-i18n="preferences.darkColors">Dark Theme Colors</div>
+                <div class="color-settings">
+                  <div class="color-setting-item">
+                    <label class="color-label" data-i18n="preferences.background">Background</label>
+                    <div class="color-input-group">
+                      <input type="text" class="color-input" id="colorFg" placeholder="#111111">
+                      <div class="color-preview" id="colorFgPreview"></div>
+                      <button class="color-reset-btn" id="resetColorFg" data-reset-color="colorFg" title="Reset to default" data-i18n="preferences.resetDefault" style="display: none;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                          <path d="M3 3v5h5"/>
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                  <div class="color-setting-item">
+                    <label class="color-label" data-i18n="preferences.textIcons">Text & Icons</label>
+                    <div class="color-input-group">
+                      <input type="text" class="color-input" id="textColorDark" placeholder="#F3F4F1">
+                      <div class="color-preview" id="textColorDarkPreview"></div>
+                      <button class="color-reset-btn" id="resetTextColorDark" data-reset-color="textColorDark" title="Reset to default" data-i18n="preferences.resetDefault" style="display: none;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+                          <path d="M3 3v5h5"/>
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="settings-section" id="cacheSection" data-section="cache">
+              <h2 data-i18n="settings.cache">Cache</h2>
+
+              <div class="setting-group">
+                <div class="setting-label" data-i18n="cache.statistics">Cache Statistics</div>
+                <div class="cache-stats" id="cacheStats">
+                  <div class="cache-stat-item">
+                    <span class="stat-label" data-i18n="cache.pngImages">PNG Images:</span>
+                    <span class="stat-value" id="cacheImagesCount">-</span>
+                    <span class="stat-size" id="cacheImagesSize">-</span>
+                  </div>
+                  <div class="cache-stat-item">
+                    <span class="stat-label" data-i18n="cache.svgFiles">SVG Files:</span>
+                    <span class="stat-value" id="cacheSvgsCount">-</span>
+                    <span class="stat-size" id="cacheSvgsSize">-</span>
+                  </div>
+                  <div class="cache-stat-item total">
+                    <span class="stat-label" data-i18n="cache.total">Total:</span>
+                    <span class="stat-value" id="cacheTotalCount">-</span>
+                    <span class="stat-size" id="cacheTotalSize">-</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="setting-group">
+                <button class="clear-cache-btn" id="clearCacheBtn">
+                  <span data-i18n="cache.clear">Clear Cache</span>
+                </button>
+                <div class="setting-description" data-i18n="cache.clearDesc">
+                  Remove all cached images and SVG files. Files will be re-fetched from Figma when needed.
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <aside class="properties">
+        <div class="sidebar-header">
+          <button class="sidebar-collapse-btn" id="propertiesCollapseBtn" title="Collapse Properties" data-i18n="toolbar.collapseProperties">
+            <img src="/icons/sidebar.svg" alt="Collapse Properties" style="transform: scaleX(-1);">
+          </button>
+        </div>
+        <div class="content" id="propertiesContent">
+          <div class="empty" data-i18n="properties.title">Select a layer to view properties</div>
+        </div>
+      </aside>
+    </main>
+
+    <script src="/html-to-image.min.js"></script>
+    <script src="/libs/highlight.min.js"></script>
+    <script src="/libs/highlightjs-line-numbers.min.js"></script>
+    <script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
+    <script src="/icon-colorizer.js"></script>
+    <script type="module" src="/i18n.js"></script>
+    <script type="module" src="/index.js"></script>
+  </body>
+</html>
