@@ -1,3 +1,17 @@
+/**
+ * Stroke Rendering Module
+ *
+ * Converts Figma strokes to CSS borders/outlines.
+ *
+ * Supported: Solid, Gradient (LINEAR), Dashed, Dotted, Custom patterns
+ * Alignments: INSIDE (box-shadow/pseudo), CENTER (border), OUTSIDE (outline)
+ *
+ * Limitations:
+ * - CSS dashed/dotted use browser defaults, cannot match exact Figma dash lengths
+ *   (dashPattern is reduced to coarse solid/dashed/dotted mapping)
+ * - TODO: Brush/Dynamic strokes, other gradient types (RADIAL/ANGULAR/DIAMOND)
+ */
+
 import { rgbaToCss, type ParsedEffects, gradientToCssValue, type GradientFill } from './css';
 import { type RadiiData } from './borderRadius';
 import { CssCollector } from './cssCollector';
@@ -16,6 +30,7 @@ interface StrokeDataSolid {
   color: string;
   align: string;
   weights: StrokeWeights;
+  dashPattern?: number[];
 }
 
 interface StrokeDataGradient {
@@ -26,6 +41,42 @@ interface StrokeDataGradient {
 }
 
 type StrokeData = StrokeDataSolid | StrokeDataGradient;
+
+/**
+ * Heuristic threshold for distinguishing dotted vs dashed strokes.
+ * dashPattern values <= 2px are rendered as 'dotted' to match CSS dotted style (~2px dots).
+ * This is a visual approximation; exact Figma rendering may differ across DPI settings.
+ */
+const DOTTED_DASH_THRESHOLD = 2;
+
+/**
+ * Determine CSS border-style from Figma's dashPattern
+ *
+ * - Empty/undefined → 'solid'
+ * - dashPattern[0] <= DOTTED_DASH_THRESHOLD → 'dotted' (e.g. [1] or [0, gap])
+ * - dashPattern[0] > DOTTED_DASH_THRESHOLD → 'dashed' (e.g. [5, 6])
+ *
+ * Note: CSS cannot replicate exact Figma dash lengths. Browser uses default patterns.
+ * TODO(#issue): Use SVG stroke-dasharray for pixel-perfect rendering
+ */
+function getBorderStyle(dashPattern?: number[]): 'solid' | 'dotted' | 'dashed' {
+  if (!dashPattern || dashPattern.length === 0) {
+    return 'solid';
+  }
+
+  if (dashPattern[0] <= DOTTED_DASH_THRESHOLD) {
+    return 'dotted';
+  }
+
+  return 'dashed';
+}
+
+/**
+ * Normalize dashPattern to undefined if empty or invalid
+ */
+function normalizeDashPattern(pattern: unknown): number[] | undefined {
+  return Array.isArray(pattern) && pattern.length > 0 ? pattern : undefined;
+}
 
 function extractStrokeData(node: any): StrokeData | null {
   const style = node?.style;
@@ -41,7 +92,8 @@ function extractStrokeData(node: any): StrokeData | null {
     const color = visible.color ? rgbaToCss(visible.color) : null;
     if (!color) return null;
     const weights = style.strokeWeights || { t: 0, r: 0, b: 0, l: 0 };
-    return { kind: 'solid', color, align: style.strokeAlign || 'INSIDE', weights };
+    const dashPattern = normalizeDashPattern(style.dashPattern);
+    return { kind: 'solid', color, align: style.strokeAlign || 'INSIDE', weights, dashPattern };
   }
 
   if (visible?.type === 'GRADIENT_LINEAR') {
@@ -95,15 +147,26 @@ export function collectStrokeStyle(
   const hasEffects = effects && effects.shadows.length > 0;
 
   if (isUniform && !hasEffects && strokeData.kind === 'solid') {
-    if (strokeData.align === 'INSIDE') {
+    const borderStyle = getBorderStyle(strokeData.dashPattern);
+    const hasDashPattern = borderStyle !== 'solid';
+
+    // INSIDE alignment: use box-shadow for solid strokes, pseudo element for dashed/dotted
+    if (strokeData.align === 'INSIDE' && !hasDashPattern) {
       return { css: '', boxShadow: [`inset 0 0 0 ${w.t}px ${strokeData.color}`] };
     }
-    if (strokeData.align === 'CENTER') {
+    // INSIDE + dashPattern: box-shadow doesn't support dashed/dotted, fallthrough to pseudo element
+
+    // CENTER alignment: use border for solid strokes, pseudo element for dashed/dotted
+    if (strokeData.align === 'CENTER' && !hasDashPattern) {
       return { css: `border: ${w.t}px solid ${strokeData.color};`, boxShadow: [] };
     }
-    if (strokeData.align === 'OUTSIDE') {
+    // CENTER + dashPattern: fallthrough to pseudo element
+
+    // OUTSIDE alignment: use outline for solid strokes, pseudo element for dashed/dotted
+    if (strokeData.align === 'OUTSIDE' && !hasDashPattern) {
       return { css: `outline: ${w.t}px solid ${strokeData.color}; outline-offset: 0;`, boxShadow: [] };
     }
+    // OUTSIDE + dashPattern: fallthrough to pseudo element
   }
 
   if (isUniform && strokeData.kind === 'gradient') {
@@ -155,10 +218,12 @@ function generatePseudoStroke(data: StrokeDataSolid, radii: RadiiData | undefine
 
   const w = data.weights;
   const isUniform = w.t === w.r && w.r === w.b && w.b === w.l;
+  const borderStyle = getBorderStyle(data.dashPattern);
+
   if (isUniform) {
-    parts.push(`border:${w.t}px solid ${data.color}`);
+    parts.push(`border:${w.t}px ${borderStyle} ${data.color}`);
   } else {
-    parts.push('border-style:solid');
+    parts.push(`border-style:${borderStyle}`);
     parts.push(`border-color:${data.color}`);
     parts.push(`border-width:${w.t}px ${w.r}px ${w.b}px ${w.l}px`);
   }

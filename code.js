@@ -292,6 +292,14 @@ function extractStrokeWeights(n) {
   const out = {};
   if (!allZero) out.strokeWeights = { t, r, b, l };
   if (align) out.strokeAlign = align;
+
+  // Extract dashPattern for dashed/dotted strokes (e.g. [5, 6] = 5px dash + 6px gap).
+  // Note: downstream we can only approximate these via CSS border-style, so exact dash/gap
+  // lengths will still depend on the browser's defaults.
+  if (Array.isArray(n.dashPattern) && n.dashPattern.length > 0) {
+    out.dashPattern = n.dashPattern;
+  }
+
   return Object.keys(out).length ? out : undefined;
 }
 

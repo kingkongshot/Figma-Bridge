@@ -55,6 +55,12 @@ export interface FigmaStyle {
   strokes?: FigmaPaint[];
   strokeWeights?: { t: number; r: number; b: number; l: number };
   strokeAlign?: string;
+  /**
+   * Dash pattern for dashed/dotted strokes
+   * @example [5, 6] // 5px dash + 6px gap
+   * Note: CSS border rendering can only approximate these values (browser-defined patterns).
+   */
+  dashPattern?: number[];
   effects?: FigmaEffect[];
   opacity?: number;
   blendMode?: string;

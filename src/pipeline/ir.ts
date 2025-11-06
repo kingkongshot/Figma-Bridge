@@ -158,6 +158,7 @@ function buildRawStyle(node: FigmaNode) {
     strokes: node.style.strokes,
     strokeWeights: node.style.strokeWeights || (Array.isArray(node.style.strokes) && node.style.strokes.length > 0 ? { t: 0, r: 0, b: 0, l: 0 } : undefined),
     strokeAlign: node.style.strokeAlign,
+    dashPattern: node.style.dashPattern,
     effects: node.style.effects,
     opacity: node.style.opacity,
     blendMode: node.style.blendMode,
