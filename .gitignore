@@ -39,3 +39,8 @@ Thumbs.db
 
 # TypeScript
 *.tsbuildinfo
+
+# Prompt
+AGENTS.md
+CLAUDE.local.md
+CLAUDE.md
