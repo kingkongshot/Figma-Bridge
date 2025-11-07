@@ -36,7 +36,19 @@ function computeSvgLayoutFromBounds(node: FigmaNode, parentAbs: number[][]): { l
   const invParent = matInv(parentAbs);
   if (!invParent) throw new Error('Parent transform not invertible');
   const localPos = matApply(invParent, arb.x, arb.y);
-  return { left: localPos.x, top: localPos.y, width: rb.width, height: rb.height, t2x2: { a: 1, b: 0, c: 0, d: 1 } };
+  // SVG content is already in absolute coordinates (exported by Figma).
+  // If parent has rotation/scale, we need to apply inverse transform to cancel it out,
+  // otherwise the SVG will be transformed twice (once in content, once by parent's CSS transform).
+  const a = invParent[0][0], c = invParent[0][1];
+  const b = invParent[1][0], d = invParent[1][1];
+  const isParentIdentity = Math.abs(a - 1) < 1e-6 && Math.abs(b) < 1e-6 && Math.abs(c) < 1e-6 && Math.abs(d - 1) < 1e-6;
+
+  if (isParentIdentity) {
+    return { left: localPos.x, top: localPos.y, width: rb.width, height: rb.height, t2x2: { a: 1, b: 0, c: 0, d: 1 } };
+  }
+
+  // Return inverse of parent's 2x2 rotation/scale to cancel out parent's transform
+  return { left: localPos.x, top: localPos.y, width: rb.width, height: rb.height, t2x2: { a, b, c, d } };
 }
 
 function applyContainerSemantics(node: FigmaNode, layout: LayoutInfo) {
@@ -101,7 +113,7 @@ export function computeLayout(
 
   const base = kind === 'svg' ? computeSvgLayoutFromBounds(node, parentAbs) : computeDefaultLayout(node, M_local);
 
-  // ✅ 优化：如果父容器是 Flexbox，默认用 relative，否则用 absolute
+  // Flexbox children use relative positioning to stay in flow; otherwise absolute
   let outPosition: 'absolute' | 'relative' = flags?.asFlexItem ? 'relative' : 'absolute';
   let outLeft = base.left;
   let outTop = base.top;
@@ -119,7 +131,6 @@ export function computeLayout(
       reserveW = Math.abs(a) * w + Math.abs(c) * h;
       reserveH = Math.abs(b) * w + Math.abs(d) * h;
     }
-    // ✅ position 已在前面设置，这里只设置 offset 和尺寸
     outLeft = 0;
     outTop = 0;
     outWidth = reserveW;
