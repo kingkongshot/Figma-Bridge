@@ -27,7 +27,11 @@ export function collectNodeBoxCss(
   const isSvg = node?.svgId || node?.svgContent;
   const paintCss = (isSvg ? '' : collectPaintCss(node, isText)) || '';
   const effects = opts?.suppressEffects ? { shadows: [] } as ParsedEffects : parseEffects(node);
-  const radiusCss = collectBorderRadiusCss(node) || '';
+  let radiusCss = collectBorderRadiusCss(node) || '';
+  // Ensure ellipse stays circular when not using SVG path
+  if (!isSvg && node?.type === 'ELLIPSE' && !/border-radius\s*:/i.test(radiusCss)) {
+    radiusCss += 'border-radius:50%;overflow:hidden;';
+  }
   
   const hasFills = hasVisibleFills(node);
   const stroke = collectStrokeStyle(node, cssCollector, opts?.pseudoHostSelector, opts?.effectsForStroke);

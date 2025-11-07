@@ -54,7 +54,6 @@ function sortByDocumentOrder(nodes) {
 
 function expandGroupsWithAncestors(nodes) {
   // Preserve selection as-is; no flattening.
-  // Filter out VECTOR nodes at top level.
   return nodes
     .filter(n => !!n && n.visible !== false)
     .map(n => ({ node: n, ancestors: [] }));
@@ -156,16 +155,15 @@ function extractFills(n) {
     else if (p.type === 'IMAGE' && typeof p.imageHash === 'string') {
       const safeId = sanitizeImageId(p.imageHash);
       if (safeId) {
-        const img = { 
-          type: 'IMAGE', 
-          imageId: safeId, 
-          imageHash: p.imageHash, 
+        const img = {
+          type: 'IMAGE',
+          imageId: safeId,
+          imageHash: p.imageHash,
           scaleMode: p.scaleMode,
           opacity: paintOpacity,
           blendMode: typeof p.blendMode === 'string' ? p.blendMode : undefined
         };
         // Preserve crop/tiling/stretched transforms when available (best-effort)
-        // Figma may expose imageTransform (2x3 matrix) and scalingFactor depending on scaleMode
         try {
           if (p && p.imageTransform && Array.isArray(p.imageTransform) && p.imageTransform.length >= 2) {
             const m0 = p.imageTransform[0];
@@ -180,9 +178,7 @@ function extractFills(n) {
           if (p && typeof p.scalingFactor === 'number') {
             img.scalingFactor = p.scalingFactor;
           }
-        } catch (_) {
-          // Ignore optional fields if not present
-        }
+        } catch (_) {}
         out.push(img);
       }
     }
@@ -327,6 +323,15 @@ function extractNodeStyle(n) {
     extractRadii(n),
     extractStrokes(n),
     extractStrokeWeights(n),
+    (function extractDash(n){
+      try {
+        const dp = (n && 'dashPattern' in n) ? n.dashPattern : undefined;
+        if (Array.isArray(dp) && dp.length > 0 && dp.every(v => typeof v === 'number' && isFinite(v))) {
+          return { dashPattern: dp.slice(0, 16) };
+        }
+      } catch (_) {}
+      return undefined;
+    })(n),
     extractEffects(n)
   ].filter(Boolean);
   const nodeOpacity = (n && typeof n.opacity === 'number') ? n.opacity : 1;
@@ -458,7 +463,6 @@ async function collectNode(n, opts) {
       height: n.absoluteRenderBounds.height
     };
   }
-  // Frame/容器裁剪语义
   entry.clipsContent = n.clipsContent === true;
   if (n && n.parent && n.parent.type === 'FRAME' && n.constraints && typeof n.constraints === 'object') {
     const h = n.constraints.horizontal;
@@ -479,15 +483,37 @@ async function collectNode(n, opts) {
   }
 
   if (!entry.svgContent && VECTOR_TYPES.includes(n.type) && typeof n.exportAsync === 'function') {
+    // Decide if this vector should export as SVG. For ELLIPSE with dashed + INSIDE/OUTSIDE
+    // we skip SVG so downstream stroke pipeline can render true INSIDE/OUTSIDE.
+    let allowSvg = true;
     try {
-      const svgString = await n.exportAsync({ format: 'SVG_STRING', svgOutlineText: true, svgSimplifyStroke: true });
-      if (svgString && typeof svgString === 'string') {
-        entry.svgContent = svgString;
-      } else {
-        console.warn(`[SVG] Export returned non-string for ${n.type} node ${n.id}:`, typeof svgString);
+      const s = style || (entry && entry.style);
+      const dash = s && Array.isArray(s.dashPattern) ? s.dashPattern : undefined;
+      const align = s && typeof s.strokeAlign === 'string' ? s.strokeAlign : undefined;
+      const alignUp = align ? align.toUpperCase() : undefined;
+      if (n.type === 'ELLIPSE' && dash && dash.length > 0 && (alignUp === 'INSIDE' || alignUp === 'OUTSIDE')) {
+        allowSvg = false;
+        console.log(`[SVG] Skip export for ELLIPSE ${n.id}: dashed ${alignUp} stroke handled by CSS pipeline.`);
       }
-    } catch (e) {
-      console.error(`[SVG] Export failed for ${n.type} node ${n.id}:`, e);
+      // For other vector shapes with dashed and non-center align, we warn once: SVG will center strokes.
+      if (allowSvg && n.type !== 'ELLIPSE') {
+        if (dash && dash.length > 0 && alignUp && alignUp !== 'CENTER') {
+          console.warn(`[SVG] ${n.type} ${n.id}: dashed stroke align=${alignUp} will render centered in SVG.`);
+        }
+      }
+    } catch (_) {}
+
+    if (allowSvg) {
+      try {
+        const svgString = await n.exportAsync({ format: 'SVG_STRING', svgOutlineText: true, svgSimplifyStroke: true });
+        if (svgString && typeof svgString === 'string') {
+          entry.svgContent = svgString;
+        } else {
+          console.warn(`[SVG] Export returned non-string for ${n.type} node ${n.id}:`, typeof svgString);
+        }
+      } catch (e) {
+        console.error(`[SVG] Export failed for ${n.type} node ${n.id}:`, e);
+      }
     }
   }
 

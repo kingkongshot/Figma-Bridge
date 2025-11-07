@@ -55,6 +55,8 @@ export interface FigmaStyle {
   strokes?: FigmaPaint[];
   strokeWeights?: { t: number; r: number; b: number; l: number };
   strokeAlign?: string;
+  // Optional dash pattern for strokes (from Figma's dashPattern)
+  dashPattern?: number[];
   effects?: FigmaEffect[];
   opacity?: number;
   blendMode?: string;
