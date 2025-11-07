@@ -13,6 +13,7 @@ tmp/
 
 # Debug files
 debug/
+fixtures/
 
 # Logs
 *.log
@@ -44,3 +45,4 @@ Thumbs.db
 AGENTS.md
 CLAUDE.local.md
 CLAUDE.md
+docs/
