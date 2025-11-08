@@ -32,6 +32,7 @@ export function normalizeNode(node: any): void {
   upperAssign(node, 'counterAxisSizingMode');
   upperAssign(node, 'primaryAxisAlignItems');
   upperAssign(node, 'counterAxisAlignItems');
+  upperAssign(node, 'maskType');
 
   // constraints enums (if present)
   if (node.constraints && typeof node.constraints === 'object') {

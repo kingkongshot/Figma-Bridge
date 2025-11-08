@@ -3,7 +3,7 @@ import { CssCollector } from '../utils/cssCollector';
 import { buildRenderItems, type RenderItem, type RenderNodeItem, type RenderMaskedItem } from '../utils/renderItems';
 import { getLayoutAxes, mapAlignItems } from '../utils/layout';
 import { matInv, matMul } from '../utils/matrix';
-import { collectBorderRadiusCss } from '../utils/css';
+import { collectBorderRadiusCss, buildMaskCss, hasMaskImageFill } from '../utils/css';
 import { computeEffectsMode, getInheritedShadows } from '../utils/effects-mode';
 import type { ShadowEffect } from '../utils/css';
 import { renderTextSegments } from '../utils/css';
@@ -146,6 +146,12 @@ function processMaskedGroup(
   if (isEllipse) parts.push('border-radius:50%;overflow:hidden;');
   else parts.push('overflow:hidden;');
   if (typeof it.containerCss === 'string' && it.containerCss) parts.push(it.containerCss);
+
+  // Why: apply mask image from mask node fills
+  if (hasMaskImageFill(mask)) {
+    const maskCss = buildMaskCss(mask);
+    parts.push(maskCss);
+  }
 
   const containerIR: RenderNodeIR = {
     id: String(mask.id || 'mask'),

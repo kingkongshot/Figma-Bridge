@@ -130,6 +130,7 @@ export interface FigmaNode {
   svgId?: string;
   svgContent?: string;
   isMask?: boolean;
+  maskType?: 'ALPHA' | 'LUMINANCE' | string;
 }
 
 export interface CompositionInput {

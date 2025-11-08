@@ -3,6 +3,7 @@ import { buildFontStack } from './fonts';
 import { computeBorderRadius, type RadiiData } from './borderRadius';
 import type {
   FigmaGradientPaint,
+  FigmaImagePaint,
   FigmaEffect,
   FigmaText,
   FigmaStyle,
@@ -504,4 +505,71 @@ export function collectEffectsCss(node: { style?: FigmaStyle } | FigmaNode): str
   const effects = parseEffects(node);
   const css = effectsToCSS(effects, { target: 'self' });
   return css || null;
+}
+
+// Why: check if node has valid IMAGE fill with imageId for masking
+export function hasMaskImageFill(node: FigmaNode): boolean {
+  if (!node.style || !Array.isArray(node.style.fills) || node.style.fills.length === 0) {
+    return false;
+  }
+  const imageFill = node.style.fills.find(f => {
+    if (normUpper(f.type) !== 'IMAGE') return false;
+    const imgFill = f as FigmaImagePaint;
+    return !!imgFill.imageId;
+  });
+  return !!imageFill;
+}
+
+// Why: convert mask node IMAGE fill to CSS mask-image
+export function buildMaskCss(mask: FigmaNode): string {
+  const fills = mask.style!.fills!;
+  const imageFill = fills.find(f => normUpper(f.type) === 'IMAGE') as FigmaImagePaint;
+
+  const boxW = mask.width!;
+  const boxH = mask.height!;
+  const url = `images/${imageFill.imageId}.png`;
+  const scale = normUpper(imageFill.scaleMode) || 'FILL';
+
+  let size: string | undefined;
+  let position: string | undefined;
+  let repeat: string | undefined;
+
+  // Why: handle CROP transform like background-image
+  if (scale === 'CROP' && isAff2x3(imageFill.imageTransform)) {
+    const m = imageFill.imageTransform!;
+    const [a, b, tx] = m[0];
+    const [c, d, ty] = m[1];
+    if (b === 0 && c === 0 && a > 0 && d > 0 && boxW > 0 && boxH > 0) {
+      const fullW = boxW / a;
+      const fullH = boxH / d;
+      size = `${fullW.toFixed(2)}px ${fullH.toFixed(2)}px`;
+      position = `${(-tx * fullW).toFixed(2)}px ${(-ty * fullH).toFixed(2)}px`;
+      repeat = 'no-repeat';
+    }
+  }
+
+  if (!size || !position || !repeat) {
+    const def = SCALE_DEFAULTS[scale] || SCALE_DEFAULTS.FILL;
+    size = size || def.size;
+    position = position || def.position;
+    repeat = repeat || def.repeat;
+  }
+
+  const parts: string[] = [
+    `mask-image:url('${url}');`,
+    `mask-size:${size};`,
+    `mask-position:${position};`,
+    `mask-repeat:${repeat};`,
+    `-webkit-mask-image:url('${url}');`,
+    `-webkit-mask-size:${size};`,
+    `-webkit-mask-position:${position};`,
+    `-webkit-mask-repeat:${repeat};`,
+  ];
+
+  // Why: LUMINANCE uses brightness, ALPHA uses alpha channel
+  const mode = normUpper(mask.maskType) === 'LUMINANCE' ? 'luminance' : 'alpha';
+  parts.push(`mask-mode:${mode};`);
+  parts.push(`-webkit-mask-mode:${mode};`);
+
+  return parts.join('');
 }
