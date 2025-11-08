@@ -302,7 +302,30 @@ function renderWrapperBox(cfg: RenderBoxConfig): string {
   let outer = `${baseStart}${cssSeg.sizingCss}${outerCss}`;
 
   const containerCssForInner = layout.display === 'flex' ? cssSeg.containerCss : '';
-  let inner = `position:absolute;left:0;top:0;right:0;bottom:0;margin:auto;width:${fmtPx((layout as any).wrapper.contentWidth)};height:${fmtPx((layout as any).wrapper.contentHeight)};${containerCssForInner}${cssSeg.transformCss}${innerCss}`;
+  
+  // Extract wrapper info with proper typing to reduce as any usage
+  type WrapperInfo = { contentWidth: number; contentHeight: number; centerStrategy?: 'inset' | 'translate' };
+  const wrapper = (layout as any).wrapper as WrapperInfo | undefined;
+  const strategy = wrapper?.centerStrategy;
+  if (!strategy) {
+    throw new Error(`renderWrapperBox: missing wrapper.centerStrategy for node ${id}`);
+  }
+  const { contentWidth, contentHeight } = wrapper;
+  
+  let inner = '';
+  if (strategy === 'inset') {
+    // inset+margin:auto centers without affecting transform
+    inner = `position:absolute;left:0;top:0;right:0;bottom:0;margin:auto;` +
+            `width:${fmtPx(contentWidth)};height:${fmtPx(contentHeight)};` +
+            `${containerCssForInner}${cssSeg.transformCss}${innerCss}`;
+  } else {
+    // 50%+negative margin centers in pre-transform coordinate system
+    // Why: translate(-50%,-50%) would execute in rotated coordinates, causing misalignment
+    const marginCss = `margin-left:${fmtPx(-contentWidth / 2)};margin-top:${fmtPx(-contentHeight / 2)};`;
+    inner = `position:absolute;left:50%;top:50%;${marginCss}` +
+            `width:${fmtPx(contentWidth)};height:${fmtPx(contentHeight)};` +
+            `${containerCssForInner}${cssSeg.transformCss}${innerCss}`;
+  }
 
   if (!(t.a === 1 && t.b === 0 && t.c === 0 && t.d === 1)) {
     const res = migrateShadowsToOuter(inner, outer);

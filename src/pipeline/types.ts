@@ -28,7 +28,8 @@ export type LayoutInfo = {
   origin: 'top left' | 'center';
   // For rotated/reflected flex items, renderer may allocate an outer reserved box
   // and put the visual transform on an inner box to avoid non-uniform stroke scaling.
-  wrapper?: { contentWidth: number; contentHeight: number };
+  // centerStrategy is optional to keep backward compatibility with existing renders.
+  wrapper?: { contentWidth: number; contentHeight: number; centerStrategy?: 'inset' | 'translate' };
 };
 
 export type StyleInfo = {

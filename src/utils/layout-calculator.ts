@@ -36,9 +36,7 @@ function computeSvgLayoutFromBounds(node: FigmaNode, parentAbs: number[][]): { l
   const invParent = matInv(parentAbs);
   if (!invParent) throw new Error('Parent transform not invertible');
   const localPos = matApply(invParent, arb.x, arb.y);
-  // SVG content is already in absolute coordinates (exported by Figma).
-  // If parent has rotation/scale, we need to apply inverse transform to cancel it out,
-  // otherwise the SVG will be transformed twice (once in content, once by parent's CSS transform).
+  // Prevent double-transform: cancel parent's rotate/scale on baked SVG.
   const a = invParent[0][0], c = invParent[0][1];
   const b = invParent[1][0], d = invParent[1][1];
   const isParentIdentity = Math.abs(a - 1) < 1e-6 && Math.abs(b) < 1e-6 && Math.abs(c) < 1e-6 && Math.abs(d - 1) < 1e-6;
@@ -51,7 +49,7 @@ function computeSvgLayoutFromBounds(node: FigmaNode, parentAbs: number[][]): { l
   return { left: localPos.x, top: localPos.y, width: rb.width, height: rb.height, t2x2: { a, b, c, d } };
 }
 
-function applyContainerSemantics(node: FigmaNode, layout: LayoutInfo) {
+function applyContainerSemantics(node: FigmaNode, layout: LayoutInfo, hasWrapper?: boolean) {
   const modeRaw = normUpper(node?.layoutMode) || 'NONE';
   if (modeRaw === 'HORIZONTAL' || modeRaw === 'VERTICAL') {
     layout.display = 'flex';
@@ -76,7 +74,8 @@ function applyContainerSemantics(node: FigmaNode, layout: LayoutInfo) {
 
     const children = Array.isArray(node?.children) ? node.children : [];
     const hasFlowChildren = children.some((ch: any) => ch && ch.visible !== false && String(ch?.layoutPositioning || 'AUTO').toUpperCase() !== 'ABSOLUTE');
-    if (hasFlowChildren) {
+    // Why exclude hasWrapper: wrapper already reserves correct space; setting auto would conflict with wrapper centering
+    if (hasFlowChildren && !hasWrapper) {
       const axes = getLayoutAxes(modeRaw);
       if (normUpper(node?.primaryAxisSizingMode) === 'AUTO') {
         (layout as any)[axes.main] = 'auto';
@@ -96,6 +95,18 @@ function applyContainerSemantics(node: FigmaNode, layout: LayoutInfo) {
   if (pt || pr || pb || pl) (layout as any).padding = { t: pt, r: pr, b: pb, l: pl };
   if (node?.strokesIncludedInLayout) (layout as any).boxSizing = 'border-box';
   if (node?.clipsContent) (layout as any).overflow = 'hidden';
+
+  // Decide wrapper centering strategy in IR so HTML layer only executes
+  if (hasWrapper && (layout as any).wrapper) {
+    type WrapperInfo = { contentWidth: number; contentHeight: number; centerStrategy?: 'inset' | 'translate' };
+    const w = (layout as any).wrapper as WrapperInfo;
+    const t = layout.transform2x2;
+    const hasTransform = t && !(t.a === 1 && t.b === 0 && t.c === 0 && t.d === 1);
+    
+    // inset+margin:auto preserves flex semantics but only works without transform
+    // With transform, use 50%+negative margin to center in pre-transform coordinates
+    w.centerStrategy = (layout.display === 'flex' && !hasTransform) ? 'inset' : 'translate';
+  }
 }
 
 export function computeLayout(
@@ -133,12 +144,24 @@ export function computeLayout(
     }
     outLeft = 0;
     outTop = 0;
-    outWidth = reserveW;
-    outHeight = reserveH;
     outOrigin = 'center';
 
-    if (reserveW !== w || reserveH !== h) {
-      (base as any).__wrapper = { contentWidth: w, contentHeight: h };
+    if (kind === 'svg') {
+      // Why: keep flex spacing accurate and avoid extra DOM; only wrap when baked renderBounds != design size.
+      outWidth = w;
+      outHeight = h;
+      const eps = 1e-2;
+      const needWrapper = Math.abs(base.width - w) > eps || Math.abs(base.height - h) > eps;
+      if (needWrapper) {
+        (base as any).__wrapper = { contentWidth: base.width, contentHeight: base.height };
+      }
+    } else {
+      // Why: rotated shapes need reserved AABB for layout; inner keeps original size for correct transform/stroke.
+      outWidth = reserveW;
+      outHeight = reserveH;
+      if (reserveW !== w || reserveH !== h) {
+        (base as any).__wrapper = { contentWidth: w, contentHeight: h };
+      }
     }
   }
 
@@ -162,7 +185,11 @@ export function computeLayout(
     const alignSelf = mapAlignSelf(node?.layoutAlign);
     if (alignSelf) (layout as any).alignSelf = alignSelf as any;
     const isStretch = computeIsStretch(String(node?.layoutAlign || 'AUTO'), (flags as any).parentAlignItemsCss);
+    const hasWrapper = !!(base as any).__wrapper;
     if (isStretch) {
+      // Why: stretch should work for both wrapped and non-wrapped items.
+      //      For wrapped items, the outer box needs auto sizing to allow stretch,
+      //      while the inner wrapper handles the actual content dimensions.
       const axes = (flags as any).parentAxes || getLayoutAxes('NONE');
       if (axes.cross === 'width') (layout as any).width = 'auto';
       else (layout as any).height = 'auto';
@@ -170,6 +197,13 @@ export function computeLayout(
   }
 
   if ((base as any).__wrapper) (layout as any).wrapper = (base as any).__wrapper;
-  if (kind === 'frame') applyContainerSemantics(node, layout);
+  // Ensure non-frame nodes with wrapper have explicit centerStrategy in IR
+  if (kind !== 'frame' && (layout as any).wrapper && !(layout as any).wrapper.centerStrategy) {
+    (layout as any).wrapper.centerStrategy = 'translate';
+  }
+  if (kind === 'frame') {
+    const hasWrapper = !!(layout as any).wrapper;
+    applyContainerSemantics(node, layout, hasWrapper);
+  }
   return { kind, layout };
 }
