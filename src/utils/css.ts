@@ -11,7 +11,6 @@ import type {
   FigmaVec2,
 } from '../types/figma';
 
-// Re-export convenient type aliases for downstream imports
 export type GradientFill = FigmaGradientPaint;
 export interface ShadowEffect {
   type: 'DROP_SHADOW' | 'INNER_SHADOW';
@@ -36,19 +35,16 @@ export function rgbaToCss(
   const g = Math.round(rgba.g * 255);
   const b = Math.round(rgba.b * 255);
   const a = rgba.a ?? 1;
-  // Trim alpha to 2dp and prefer rgb() when fully opaque
   const roundAlpha = (x: number): number => {
     const v = Math.round(x * 100) / 100;
-    return Math.abs(v) < 0.01 ? 0 : v; // avoid -0
+    return Math.abs(v) < 0.01 ? 0 : v;
   };
   const aa = roundAlpha(a);
   if (aa === 1) return `rgb(${r},${g},${b})`;
-  // Format minimal alpha string (e.g., 0.5 instead of 0.50)
   const s = String(aa).replace(/\.00$/, '').replace(/\.0$/, '');
   return `rgba(${r},${g},${b},${s})`;
 }
 
-// Calculate linear gradient angle in degrees based on figmagic's approach
 function calculateLinearAngleFromHandles(handles?: FigmaVec2[] | null): number | null {
   if (!handles || handles.length < 2) return 180;
   const point1 = handles[0];
@@ -65,13 +61,12 @@ function calculateLinearAngleFromTransform(m?: number[][] | null, dims?: { width
   if (!m || !isAff2x3(m)) return null;
   const a = m[0][0];
   const b = m[1][0];
-  // Direction in pixel space scales by box dims to account for aspect ratio
+  // Why: scale by box dims to account for aspect ratio
   const W = Math.max(0, Number(dims?.width) || 0);
   const H = Math.max(0, Number(dims?.height) || 0);
   const vx = W > 0 ? a * W : a;
   const vy = H > 0 ? b * H : b;
   const angleRad = Math.atan2(vy, vx);
-  // Map from math (0deg = +x, CCW) to CSS (0deg = up, CW): css = 90 - math
   let deg = 90 - ((angleRad * 180) / Math.PI);
   if (deg < 0) deg = (deg % 360) + 360;
   if (deg >= 360) deg = deg % 360;
@@ -79,22 +74,19 @@ function calculateLinearAngleFromTransform(m?: number[][] | null, dims?: { width
 }
 
 function getLinearAngle(fill: GradientFill, dims?: { width: number; height: number }): number {
-  // Prefer new API transform if available; fallback to handles
   const tDeg = calculateLinearAngleFromTransform(fill.gradientTransform, dims);
   if (typeof tDeg === 'number') return tDeg;
   const hDeg = calculateLinearAngleFromHandles(fill.gradientHandlePositions);
   return typeof hDeg === 'number' ? hDeg : 180;
 }
 
-// Map gradient type to generator, returning only the CSS value (no property prefix)
 const GRADIENT_CSS_MAP: Partial<Record<FigmaGradientType, (stops: string, fill: GradientFill) => string>> = {
   GRADIENT_RADIAL: (stops) => `radial-gradient(circle, ${stops})`,
   GRADIENT_ANGULAR: (stops) => `conic-gradient(from 0deg, ${stops})`,
-  // Note: DIAMOND is approximated via ellipse; exact diamond requires masking/advanced tricks
+  // Why: DIAMOND approximated via ellipse — exact diamond needs masking
   GRADIENT_DIAMOND: (stops) => `radial-gradient(ellipse, ${stops})`,
 };
 
-// Build gradient CSS value like `linear-gradient(...)` from a normalized fill
 export function gradientToCssValue(fill: GradientFill | null | undefined, dims?: { width: number; height: number } | null): string | null {
   if (!fill || !Array.isArray(fill.gradientStops) || fill.gradientStops.length < 2) return null;
 
@@ -120,7 +112,7 @@ export function gradientToCssValue(fill: GradientFill | null | undefined, dims?:
  * This function is pure and only depends on the provided node-like object
  * having `style.fills?: Array<{ type: string, imageId?: string, scaleMode?: string, color?: {r,g,b,a} }>`.
  */
-// Default mapping for image scale modes when no precise transform is usable
+// Why: default image scale mapping when no precise transform is usable
 const SCALE_DEFAULTS: Record<string, { size: string; repeat: string; position: string }> = {
   FIT: { size: 'contain', repeat: 'no-repeat', position: 'center' },
   FILL: { size: 'cover', repeat: 'no-repeat', position: 'center' },
@@ -150,7 +142,6 @@ function toBlendModeCss(raw?: string): string {
   return raw.toLowerCase().replace(/_/g, '-');
 }
 
-// Pure builder: produce background layers and blend modes from node fills (no CSS assembly here)
 function buildBackgroundLayers(node: FigmaNode, skipForText = false): { layers: BgLayer[]; blends: string[] } {
   if (skipForText && node?.type === 'TEXT') return { layers: [], blends: [] };
   const fills: any[] | null = Array.isArray(node?.style?.fills) ? (node.style!.fills as any[]) : null;
@@ -162,7 +153,7 @@ function buildBackgroundLayers(node: FigmaNode, skipForText = false): { layers: 
   const layers: BgLayer[] = [];
   const blends: string[] = [];
 
-  // Build layers top-first to match CSS background layering
+  // Why: top-first to match CSS background layering
   const rev = fills.slice().reverse();
   for (const f of rev) {
     const t = normUpper((f && f.type) || '');
@@ -173,7 +164,7 @@ function buildBackgroundLayers(node: FigmaNode, skipForText = false): { layers: 
       let position: string | undefined;
       let repeat: string | undefined;
 
-      // 精简版 CROP：仅处理无旋转/无斜切的缩放+平移
+      // Why: simplified CROP — handle pure scale+translate only (no rotate/skew)
       if (scale === 'CROP' && isAff2x3((f as any).imageTransform)) {
         const m = (f as any).imageTransform as number[][];
         const [a, b, tx] = m[0];
@@ -225,13 +216,11 @@ export function collectPaintCss(node: FigmaNode, skipForText = false): string | 
   const { layers, blends } = buildBackgroundLayers(node, skipForText);
   if (layers.length === 0) return null;
 
-  // Single-layer fast paths to keep CSS minimal and stable
+  // Why: single-layer fast paths keep CSS minimal and stable
   if (layers.length === 1) {
     const L = layers[0];
-    // 纯色单层：使用最简写法，保持旧行为
     if (L.kind === 'solid' && L.rawColor) return `background:${L.rawColor};`;
     if (L.kind === 'gradient') return `background:${L.image};`;
-    // Image layer
     return [
       `background-image:${L.image};`,
       `background-position:${L.position || 'center'};`,
@@ -240,7 +229,6 @@ export function collectPaintCss(node: FigmaNode, skipForText = false): string | 
     ].join('');
   }
 
-  // Multi-layer composition
   const images = layers.map(l => l.image).join(', ');
   const positions = layers.map(l => l.position || 'center').join(', ');
   const sizes = layers.map(l => l.size || 'auto').join(', ');
@@ -298,11 +286,10 @@ export function segmentToInlineCss(seg: FigmaText['segments'] extends (infer S)[
     else if (s.includes('bold')) w = 700;
     parts.push(`font-weight:${w};`);
   }
-  // Format helpers to tame floating noise (e.g. -0.01200000047 → -0.01)
+  // Why: tame floating noise (e.g. -0.01200000047 → -0.01)
   function fmtNum(n: number, dp = 2): string {
     if (!isFinite(n)) return '0';
     const v = Math.round(n * Math.pow(10, dp)) / Math.pow(10, dp);
-    // Avoid "-0"
     const vv = Math.abs(v) < 1 / Math.pow(10, dp) ? 0 : v;
     const s = String(vv);
     return s.replace(/\.00$/, '').replace(/\.0$/, '');
@@ -313,7 +300,7 @@ export function segmentToInlineCss(seg: FigmaText['segments'] extends (infer S)[
     const val = seg.letterSpacing.value || 0;
     if (unit === 'PERCENT') {
       const em = val / 100;
-      // Only emit when non-zero after rounding to 2dp
+      // Why: drop near-zero values after rounding
       const rounded = Math.round(em * 100) / 100;
       if (Math.abs(rounded) >= 0.01) parts.push(`letter-spacing:${fmtNum(em)}em;`);
     } else if (unit === 'PIXELS') {
@@ -331,7 +318,7 @@ export function segmentToInlineCss(seg: FigmaText['segments'] extends (infer S)[
     }
   }
   if (Array.isArray(seg.fills) && seg.fills.length > 0) {
-    // 选择首个可见的 SOLID 作为文本颜色；若全部不可用，则透明以避免继承父色
+    // Why: choose first visible SOLID as text color; else transparent to avoid inheriting parent color
     const visibleSolid = seg.fills.find((f: any) => {
       if (f?.visible === false) return false;
       const t = normUpper(f?.type);
@@ -365,10 +352,7 @@ export function collectTextCss(node: { text?: FigmaText }): TextCssResult {
   const parts: string[] = [];
   const align = normUpper(text.textAlignHorizontal);
   
-  // Line-break policy:
-  // - TRUNCATE → single-line ellipsis
-  // - WIDTH/WIDTH_AND_HEIGHT auto-resize → no auto-wrap, preserve explicit breaks (pre)
-  // - fixed dimensions (HEIGHT/NONE) → allow wrapping + preserve explicit breaks (pre-wrap)
+  // Why: preserve explicit breaks; wrap only for fixed/multi-line
   const autoResize = normUpper((text as any).textAutoResize);
   const truncation = normUpper((text as any).textTruncation);
   const shouldTruncate = truncation === 'ENDING' || autoResize === 'TRUNCATE';
@@ -380,37 +364,19 @@ export function collectTextCss(node: { text?: FigmaText }): TextCssResult {
     parts.push('white-space:pre-wrap;');
   }
   
-  // 水平对齐：始终用 text-align（对 span 内的文字生效）
   if (align === 'LEFT') parts.push('text-align:left;');
   else if (align === 'CENTER') parts.push('text-align:center;');
   else if (align === 'RIGHT') parts.push('text-align:right;');
   else if (align === 'JUSTIFIED') parts.push('text-align:justify;');
   
-  // 垂直对齐策略：
-  // - 自动调整大小的文本（单行/自适应）：不使用 flexbox 垂直对齐，保持文字自然基线渲染
-  // - 固定高度的文本框：根据 textAlignVertical 控制多行文本的垂直位置
+  // Why: use flex vertical align only for single-line to avoid breaking wrapping
   const vAlign = normUpper((text as any).textAlignVertical);
   let usesFlexColumn = false;
-  const isAutoSize = autoResize === 'WIDTH' || autoResize === 'WIDTH_AND_HEIGHT';
-  
-  if (!isAutoSize) {
-    // 固定高度文本：使用 flex 垂直对齐 + flex-direction:column 让 span 填满宽度
-    if (vAlign === 'TOP') {
-      parts.push('display:flex;flex-direction:column;justify-content:flex-start;');
-    } else if (vAlign === 'CENTER') {
-      parts.push('display:flex;flex-direction:column;justify-content:center;');
-    } else if (vAlign === 'BOTTOM') {
-      parts.push('display:flex;flex-direction:column;justify-content:flex-end;');
-    }
-  } else {
-    // 自动调整大小的文本：需要消除 line-height 导致的垂直居中，使用 flex 控制垂直对齐
-    if (vAlign === 'TOP') {
-      parts.push('display:flex;align-items:flex-start;');
-    } else if (vAlign === 'CENTER') {
-      parts.push('display:flex;align-items:center;');
-    } else if (vAlign === 'BOTTOM') {
-      parts.push('display:flex;align-items:flex-end;');
-    }
+  const isSingleLine = autoResize === 'WIDTH' || autoResize === 'WIDTH_AND_HEIGHT';
+  if (isSingleLine) {
+    if (vAlign === 'TOP') parts.push('display:flex;align-items:flex-start;');
+    else if (vAlign === 'CENTER') parts.push('display:flex;align-items:center;');
+    else if (vAlign === 'BOTTOM') parts.push('display:flex;align-items:flex-end;');
   }
   if (typeof text.paragraphIndent === 'number' && text.paragraphIndent !== 0) {
     parts.push(`text-indent:${text.paragraphIndent}px;`);
@@ -421,6 +387,8 @@ export function collectTextCss(node: { text?: FigmaText }): TextCssResult {
     autoWidth = true;
   } else if (autoResize === 'WIDTH_AND_HEIGHT') {
     autoWidth = true;
+    autoHeight = true;
+  } else if (autoResize === 'HEIGHT') {
     autoHeight = true;
   }
   return { css: parts.join(''), usesFlexColumn, autoWidth, autoHeight };
@@ -440,15 +408,12 @@ export function renderTextSegments(text: FigmaText): string {
     const html = escapeHtml(slice).replace(/\n/g, '<br>');
     parts.push(`<span style="${css}">${html}</span>`);
   }
+  // 不再额外包一层 div；让 span 自然 inline 换行，<br> 在 span 内即可生效
   const result = parts.join('');
-  const hasLineBreaks = chars.includes('\n');
-  return hasLineBreaks ? `<div>${result}</div>` : result;
+  return result;
 }
 
-// Effects → CSS
-// Figma blur radius conversion (official from Figma engineering):
-// - BACKGROUND_BLUR: divide by 2 (Figma 30px = CSS 15px backdrop-filter)
-// - LAYER_BLUR: divide by 2 (empirical, matches background-blur behavior)
+// Why: Figma blur radii roughly halve in CSS (e.g., 30px → 15px)
 export function parseEffects(node: { style?: FigmaStyle } | FigmaNode): ParsedEffects {
   const effects = Array.isArray(node?.style?.effects) ? (node.style!.effects as FigmaEffect[]) : [];
   const result: ParsedEffects = { shadows: [] };
@@ -489,11 +454,10 @@ export function effectsToCSS(
   opts?: { target?: 'self' | 'content'; emitBoxShadow?: boolean }
 ): string {
   const target = opts?.target || 'self';
-  const emitBoxShadow = opts?.emitBoxShadow !== false; // default true
+  const emitBoxShadow = opts?.emitBoxShadow !== false;
   const parts: string[] = [];
 
   if (target === 'self') {
-    // Map to box-shadow + filter/backdrop-filter
     if (emitBoxShadow && effects.shadows.length > 0) {
       const boxShadows = effects.shadows.map(s => {
         const inset = s.type === 'INNER_SHADOW' ? 'inset ' : '';
@@ -511,8 +475,6 @@ export function effectsToCSS(
     return parts.join('');
   }
 
-  // target === 'content'
-  // Compose all DROP_SHADOW/LAYER_BLUR into a single `filter:` chain so it affects rendered content.
   const filters: string[] = [];
   const dropShadows = effects.shadows
     .filter(s => s.type === 'DROP_SHADOW')
@@ -523,9 +485,7 @@ export function effectsToCSS(
   }
   if (filters.length > 0) parts.push(`filter:${filters.join(' ')};`);
 
-  // INNER_SHADOW has no perfect browser equivalent on rendered content.
-  // Provide a pragmatic degradation: apply inset box-shadow on the element box
-  // so users still see a similar inner shading instead of silent drop.
+  // Why: no perfect equivalent for INNER_SHADOW on content — degrade to inset box-shadow on element
   const insetShadows = effects.shadows
     .filter(s => s.type === 'INNER_SHADOW')
     .map(s => `inset ${s.x}px ${s.y}px ${s.blur}px ${s.spread}px ${s.color}`);

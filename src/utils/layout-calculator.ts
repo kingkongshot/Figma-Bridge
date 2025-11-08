@@ -45,7 +45,6 @@ function computeSvgLayoutFromBounds(node: FigmaNode, parentAbs: number[][]): { l
     return { left: localPos.x, top: localPos.y, width: rb.width, height: rb.height, t2x2: { a: 1, b: 0, c: 0, d: 1 } };
   }
 
-  // Return inverse of parent's 2x2 rotation/scale to cancel out parent's transform
   return { left: localPos.x, top: localPos.y, width: rb.width, height: rb.height, t2x2: { a, b, c, d } };
 }
 
@@ -96,15 +95,14 @@ function applyContainerSemantics(node: FigmaNode, layout: LayoutInfo, hasWrapper
   if (node?.strokesIncludedInLayout) (layout as any).boxSizing = 'border-box';
   if (node?.clipsContent) (layout as any).overflow = 'hidden';
 
-  // Decide wrapper centering strategy in IR so HTML layer only executes
+  // Why: decide centering in IR to keep HTML rendering simple
   if (hasWrapper && (layout as any).wrapper) {
     type WrapperInfo = { contentWidth: number; contentHeight: number; centerStrategy?: 'inset' | 'translate' };
     const w = (layout as any).wrapper as WrapperInfo;
     const t = layout.transform2x2;
     const hasTransform = t && !(t.a === 1 && t.b === 0 && t.c === 0 && t.d === 1);
     
-    // inset+margin:auto preserves flex semantics but only works without transform
-    // With transform, use 50%+negative margin to center in pre-transform coordinates
+    // Why: inset+margin:auto only safe without transform; otherwise center in pre-transform coords
     w.centerStrategy = (layout.display === 'flex' && !hasTransform) ? 'inset' : 'translate';
   }
 }
@@ -124,7 +122,7 @@ export function computeLayout(
 
   const base = kind === 'svg' ? computeSvgLayoutFromBounds(node, parentAbs) : computeDefaultLayout(node, M_local);
 
-  // Flexbox children use relative positioning to stay in flow; otherwise absolute
+  // Why: keep flex items in flow (relative); others are absolute
   let outPosition: 'absolute' | 'relative' = flags?.asFlexItem ? 'relative' : 'absolute';
   let outLeft = base.left;
   let outTop = base.top;
@@ -187,17 +185,29 @@ export function computeLayout(
     const isStretch = computeIsStretch(String(node?.layoutAlign || 'AUTO'), (flags as any).parentAlignItemsCss);
     const hasWrapper = !!(base as any).__wrapper;
     if (isStretch) {
-      // Why: stretch should work for both wrapped and non-wrapped items.
-      //      For wrapped items, the outer box needs auto sizing to allow stretch,
-      //      while the inner wrapper handles the actual content dimensions.
+      // 文本节点的尺寸应由 textAutoResize 控制，不应被 stretch 破坏
       const axes = (flags as any).parentAxes || getLayoutAxes('NONE');
+      const isText = String(node?.type || '').toUpperCase() === 'TEXT' && !!(node as any).text;
+      if (isText) {
+        const autoResize = normUpper((node as any).text?.textAutoResize);
+        if (axes.cross === 'width') {
+          if (autoResize === 'WIDTH' || autoResize === 'WIDTH_AND_HEIGHT') {
+            (layout as any).width = 'auto';
+          }
+        } else {
+          if (autoResize === 'HEIGHT' || autoResize === 'WIDTH_AND_HEIGHT') {
+            (layout as any).height = 'auto';
+          }
+        }
+      } else {
       if (axes.cross === 'width') (layout as any).width = 'auto';
       else (layout as any).height = 'auto';
+      }
     }
   }
 
   if ((base as any).__wrapper) (layout as any).wrapper = (base as any).__wrapper;
-  // Ensure non-frame nodes with wrapper have explicit centerStrategy in IR
+  // Why: ensure non-frame wrappers have a default centerStrategy
   if (kind !== 'frame' && (layout as any).wrapper && !(layout as any).wrapper.centerStrategy) {
     (layout as any).wrapper.centerStrategy = 'translate';
   }

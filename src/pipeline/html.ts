@@ -10,14 +10,12 @@ import { splitClassTokens } from '../utils/css-parser';
 import { migrateShadowsToOuter } from '../utils/shadow-migrator';
 import { getSemanticClassName } from '../utils/class-naming';
 
-// Track global size frequencies for this render session to avoid generating
-// one-off width/height utility classes. If a numeric width/height appears
-// only once, we prefer keeping it inline in style instead of adding a unique class.
+// Why: avoid one-off utility classes — only promote widths/heights that repeat
 let __sizeFreq: { w: Map<number, number>; h: Map<number, number> } | null = null;
 
 function shouldUseWidthClass(v: unknown): boolean {
   if (typeof v !== 'number' || !isFinite(v)) return false;
-  if (!__sizeFreq) return true; // fallback to previous behavior when freq not computed
+  if (!__sizeFreq) return true;
   return (__sizeFreq.w.get(v) || 0) > 1;
 }
 
@@ -61,7 +59,7 @@ function computeViewport(bounds: Bounds, union: Rect, padding: number = 4) {
   return { viewWidth, viewHeight, minXView, minYView };
 }
 
-// Format pixels with trimmed precision to avoid noise like 596.000244px
+// Why: trim float noise (e.g. 596.000244px)
 function fmtPx(n: number): string {
   if (!isFinite(n)) return '0px';
   const v = Math.round(n * 100) / 100;
@@ -273,7 +271,9 @@ function extractLayoutCssForDebug(boxCss: string): string {
     'row-gap', 'column-gap',
     'box-sizing',
     'border-radius', 'border-top-left-radius', 'border-top-right-radius', 'border-bottom-right-radius', 'border-bottom-left-radius',
-    'flex-wrap'
+    'flex-wrap',
+    // Why: debug overlay needs to reveal text wrapping/alignment
+    'white-space', 'text-align'
   ]);
   const tokens = boxCss.split(';').map(s => s.trim()).filter(Boolean);
   const kept: string[] = [];
@@ -303,7 +303,7 @@ function renderWrapperBox(cfg: RenderBoxConfig): string {
 
   const containerCssForInner = layout.display === 'flex' ? cssSeg.containerCss : '';
   
-  // Extract wrapper info with proper typing to reduce as any usage
+  // Why: wrapper carries inner content size used for centering
   type WrapperInfo = { contentWidth: number; contentHeight: number; centerStrategy?: 'inset' | 'translate' };
   const wrapper = (layout as any).wrapper as WrapperInfo | undefined;
   const strategy = wrapper?.centerStrategy;
@@ -314,13 +314,11 @@ function renderWrapperBox(cfg: RenderBoxConfig): string {
   
   let inner = '';
   if (strategy === 'inset') {
-    // inset+margin:auto centers without affecting transform
     inner = `position:absolute;left:0;top:0;right:0;bottom:0;margin:auto;` +
             `width:${fmtPx(contentWidth)};height:${fmtPx(contentHeight)};` +
             `${containerCssForInner}${cssSeg.transformCss}${innerCss}`;
   } else {
-    // 50%+negative margin centers in pre-transform coordinate system
-    // Why: translate(-50%,-50%) would execute in rotated coordinates, causing misalignment
+    // Why: 50%+negative margin centers in pre-transform coords; translate(-50%,-50%) runs in rotated coords and misaligns
     const marginCss = `margin-left:${fmtPx(-contentWidth / 2)};margin-top:${fmtPx(-contentHeight / 2)};`;
     inner = `position:absolute;left:50%;top:50%;${marginCss}` +
             `width:${fmtPx(contentWidth)};height:${fmtPx(contentHeight)};` +
@@ -433,7 +431,6 @@ async function renderFrameNode(ctx: RenderContext): Promise<string> {
   if (!ctx.irNode) throw new Error('renderFrameNode: irNode missing');
   const layout = ctx.irNode.layout;
   let boxCss = ctx.mode === 'debug' ? extractLayoutCssForDebug(ctx.irNode.style.boxCss) : ctx.irNode.style.boxCss;
-  // Safe defaults cleanup: relative+0 offsets, transform-origin when no rotate/scale, flex defaults
   const cssCtx = {
     position: layout.position,
     hasRotateOrScale: !(layout.transform2x2.a === 1 && layout.transform2x2.b === 0 && layout.transform2x2.c === 0 && layout.transform2x2.d === 1),
@@ -471,20 +468,15 @@ async function renderFrameNode(ctx: RenderContext): Promise<string> {
     );
     innerHtml = parts.join('');
   }
-  // ✅ 使用 Figma 节点名称生成语义化 class，同时保留类型基类，避免破坏基础样式（box-sizing/position 等）
   if (ctx.mode === 'debug') {
-    // 调试层仅使用 debug 类
     var classNames: string[] = ['debug-box'];
   } else {
     const semantic = ctx.irNode.isMask
       ? 'mask-container'
       : getSemanticClassName(ctx.irNode.name || '', 'frame');
     const classSet = new Set<string>();
-    // 始终添加类型基类，确保继承到基础样式
     classSet.add('frame');
-    // 掩膜容器也保留其专用基类
     if (ctx.irNode.isMask) classSet.add('mask-container');
-    // 添加语义类（若与基类不同）
     if (semantic && semantic !== 'frame') classSet.add(semantic);
     var classNames: string[] = Array.from(classSet);
   }
@@ -495,10 +487,7 @@ async function renderFrameNode(ctx: RenderContext): Promise<string> {
     boxCss = res.newCss;
   }
   const className = classNames.join(' ');
-  // Debug 尺寸策略：
-  // - 对带有“可见盒子几何”的容器（padding/background/border-radius），调试层强制使用布局尺寸，
-  //   确保 overlay 与内容的边框盒完全一致（不会因子内容行高/字体重排而产生偏差）。
-  // - 其他容器交由子节点自然撑开，避免深层级的累计误差。
+  // Why: for boxes with visible geometry (padding/bg/radius) force layout size to keep debug overlay aligned; others let children size naturally
   let debugOverrideSize = false;
   if (ctx.mode === 'debug' && !hasWrapper) {
     const cssForCheck = boxCss || '';
@@ -551,7 +540,7 @@ async function renderTextNode(ctx: RenderContext): Promise<string> {
       util.classNames.forEach((c: string) => ctx.usedClasses!.add(c));
     }
   }
-  // ✅ 使用 Figma 节点名称生成语义化 class，同时保留类型基类
+  
   if (ctx.mode === 'debug') {
     var classNames: string[] = ['debug-box'];
   } else {
@@ -586,7 +575,7 @@ async function renderSvgNode(ctx: RenderContext): Promise<string> {
   const svgFile = (ctx.irNode as any).svgFile || null;
   const svgContent = (ctx.irNode as any).svgContent || '';
   const wantsShape = ctx.mode === 'debug' && typeof svgContent === 'string' && svgContent.trim().length > 0;
-  // ✅ 使用 Figma 节点名称生成语义化 class，同时保留类型基类
+  
   let className = '';
   if (ctx.mode === 'debug') {
     className = wantsShape ? 'debug-svg shape-only' : 'debug-svg';
@@ -634,7 +623,7 @@ async function renderSvgNode(ctx: RenderContext): Promise<string> {
     if (ctx.usedClasses && util.classNames.length) {
       util.classNames.forEach((c: string) => ctx.usedClasses!.add(c));
     }
-    // Fallback: ensure flex-shrink:0 becomes shrink-0 class even if converter didn't map it
+    // Why: ensure shrink-0 when converter misses mapping
     if (/(^|;)\s*flex-shrink\s*:\s*0\s*;?/i.test(itemCss) && !/\bshrink-0\b/.test(className)) {
       className += ' shrink-0';
       itemCss = itemCss.replace(/(^|;)\s*flex-shrink\s*:\s*0\s*;?/ig, '$1');
@@ -670,12 +659,12 @@ async function renderShapeNode(ctx: RenderContext): Promise<string> {
       util.classNames.forEach((c) => ctx.usedClasses!.add(c));
     }
   }
-  // ✅ 使用 Figma 节点名称生成语义化 class，同时保留类型基类
+  
   if (ctx.mode === 'debug') {
     var classNames: string[] = ['debug-box'];
   } else {
     const semantic = getSemanticClassName(ctx.irNode.name || '', 'shape');
-    // 旧逻辑中始终带有 "shape rect" 两个类，这里保持向后兼容：
+    // Why: keep backward compatibility with legacy "shape rect" classes
     const classSet = new Set<string>(['shape', 'rect']);
     if (semantic && semantic !== 'shape') classSet.add(semantic);
     var classNames: string[] = Array.from(classSet);
@@ -708,7 +697,7 @@ async function renderNodeUnified(irNode: RenderNodeIR, ctx: RenderContext): Prom
   return renderShapeNode(ctx);
 }
 
-// --- Document assembly (now uses html-builder module) ---
+ 
 function wrapInDocument(config: DocumentConfig): string {
   const head = buildHtmlHead(config);
   const body = buildHtmlBody(config);
@@ -748,7 +737,6 @@ function buildDebugStyles(): string {
   mix-blend-mode: normal !important;
   opacity: 1 !important;
   overflow: visible !important;
-  /* 统一使用同一变量驱动粗细（同时作用于 outline 和 SVG 描边） */
   --bridge-stroke: calc(1px / var(--bridge-scale));
   outline: var(--bridge-stroke) solid rgba(4, 153, 255, var(--bridge-debug-alpha, 0));
   outline-offset: 0;
@@ -759,14 +747,11 @@ function buildDebugStyles(): string {
 .debug-box.has-wrapper > .debug-box { pointer-events: auto; }
 .debug-overlay .debug-box.is-hover, .debug-overlay .debug-svg.is-hover { z-index: 2147483600 !important; }
 .debug-overlay .debug-box.is-selected, .debug-overlay .debug-svg.is-selected { z-index: 2147483647 !important; }
-/* 状态统一通过 --bridge-stroke 控制粗细，颜色使用统一蓝色 */
-.debug-box.is-hover, .debug-svg.is-hover { --bridge-stroke: calc(2px / var(--bridge-scale)); outline: var(--bridge-stroke) solid var(--bridge-debug-blue) !important; }
-.debug-box.is-selected, .debug-svg.is-selected { --bridge-stroke: calc(3px / var(--bridge-scale)); outline: var(--bridge-stroke) solid var(--bridge-debug-blue) !important; }
-/* 形状模式保持与普通 overlay 一致，仅使用统一变量 */
-.debug-svg.shape-only.is-hover { outline: var(--bridge-stroke) solid var(--bridge-debug-blue) !important; }
-.debug-svg.shape-only.is-selected { outline: var(--bridge-stroke) solid var(--bridge-debug-blue) !important; }
-/* 形状描边在 hover/selected 时按与 outline 一致的粗细变化 */
-.debug-svg.is-hover svg *, .debug-svg.is-selected svg * { stroke-opacity: 1 !important; }
+  .debug-box.is-hover, .debug-svg.is-hover { --bridge-stroke: calc(2px / var(--bridge-scale)); outline: var(--bridge-stroke) solid var(--bridge-debug-blue) !important; }
+  .debug-box.is-selected, .debug-svg.is-selected { --bridge-stroke: calc(3px / var(--bridge-scale)); outline: var(--bridge-stroke) solid var(--bridge-debug-blue) !important; }
+  .debug-svg.shape-only.is-hover { outline: var(--bridge-stroke) solid var(--bridge-debug-blue) !important; }
+  .debug-svg.shape-only.is-selected { outline: var(--bridge-stroke) solid var(--bridge-debug-blue) !important; }
+  .debug-svg.is-hover svg *, .debug-svg.is-selected svg * { stroke-opacity: 1 !important; }
 .debug-box.has-wrapper { outline: none !important; }
 .debug-box.has-wrapper > .debug-box { outline: calc(1px / var(--bridge-scale)) solid rgba(4, 153, 255, var(--bridge-debug-alpha, 0)); }
 .debug-box.has-wrapper.is-hover { outline: none !important; }
@@ -802,7 +787,7 @@ async function buildPreviewPieces(
     throw new Error('composition.absOrigin missing or invalid');
   }
 
-  // Precompute numeric width/height usage frequency for utility decision
+  // Why: precompute w/h usage frequency to decide utility vs inline
   {
     const wMap = new Map<number, number>();
     const hMap = new Map<number, number>();
@@ -858,10 +843,10 @@ export async function createPreviewHtml(
     debugEnabled
   );
 
-  // 注意：这里的 bounds 表示“内容并集”的尺寸，而非设计画布尺寸
+  
   const contentBounds = { width: Math.ceil(renderUnion.width), height: Math.ceil(renderUnion.height) };
   const overlayStr = debugEnabled ? debugHtml.join('\n') : '';
-  // 仅生成纯净文档（不包含调试样式与 overlay）
+  
   const utilityCss = buildUtilityCssSelective(usedClasses);
   const html = wrapInDocument({
     bodyHtml: shapeHtml.join('\n'),
@@ -891,7 +876,7 @@ export async function createPreviewAssets(
     throw new Error('Composition contains no children');
   }
 
-  // Reserve 4px padding for debug overlay outline (max 3px when selected)
+  // Why: reserve 4px padding for debug overlay outline (max 3px when selected)
   const { viewWidth, viewHeight, minXView, minYView } = computeViewport(bounds, renderUnion, 4);
   const safeViewWidth = Math.ceil(viewWidth);
   const safeViewHeight = Math.ceil(viewHeight);
@@ -904,7 +889,7 @@ export async function createPreviewAssets(
   );
   const overlayStr = debugEnabled ? debugHtml.join('\n') : '';
 
-  // CSS text (was inline before)
+  
   const baseStyles = `html, body {\n  margin: 0;\n  font-family: -apple-system, BlinkMacSystemFont, \"Helvetica Neue\", Helvetica, Arial, sans-serif;\n  font-synthesis-weight: none;\n  background: transparent;\n  box-sizing: border-box;\n  overflow: hidden;\n}\n.viewport {\n  position: relative;\n  width: ${viewport.width}px;\n  height: ${viewport.height}px;\n  background: transparent;\n  box-sizing: border-box;\n  transform-origin: top left;\n}\n.view-offset {\n  position: absolute;\n  left: ${-viewport.offsetX}px;\n  top: ${-viewport.offsetY}px;\n  width: 100%;\n  height: 100%;\n  background: transparent;\n  box-sizing: border-box;\n}\n.composition {\n  position: absolute;\n  left: 0px;\n  top: 0px;\n  width: ${bounds.width}px;\n  height: ${bounds.height}px;\n  background: transparent;\n  box-sizing: border-box;\n}\n.content-layer {\n  position: relative;\n  z-index: 0;\n}\n.frame, .shape, .text, .svg-container, .mask-container {\n  box-sizing: border-box;\n  position: relative;\n  z-index: 0;\n}\n.svg-container > svg {\n  display: block;\n  width: 100%;\n  height: 100%;\n  shape-rendering: geometricPrecision;\n}\n.svg-container > img {\n  display: block;\n  width: 100%;\n  height: 100%;\n}`;
   const utilityCss = buildUtilityCssSelective(usedClasses);
   const cssText = `${baseStyles}\n${utilityCss}\n${cssRules || ''}\n${sharedCss}`;
@@ -919,7 +904,6 @@ export async function createPreviewAssets(
   return { html: htmlDoc, cssText, baseWidth: viewport.width, baseHeight: viewport.height, renderUnion, debugHtml: overlayStr, debugCss };
 }
 
-// Build content pieces for output packaging: body HTML + CSS bundle (no inline <style>)
 export async function createContentAssets(
   irNodes: RenderNodeIR[],
   cssRules: string,
@@ -927,7 +911,7 @@ export async function createContentAssets(
   chineseFontsUrls?: string[]
 ): Promise<{ bodyHtml: string; cssText: string; headLinks: string }> {
   const dummyCssCollector = new CssCollector();
-  // Compute size frequencies for this content export
+  // Why: compute size frequencies for this content export
   {
     const wMap = new Map<number, number>();
     const hMap = new Map<number, number>();
@@ -972,7 +956,7 @@ export async function createContentHtml(
   chineseFontsUrls?: string[]
 ): Promise<string> {
   const dummyCssCollector = new CssCollector();
-  // Compute size frequencies for this content export
+  // Why: compute size frequencies for this content export
   {
     const wMap = new Map<number, number>();
     const hMap = new Map<number, number>();
