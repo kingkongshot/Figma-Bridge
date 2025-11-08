@@ -50,6 +50,11 @@ export function normalizeNode(node: any): void {
     }
   }
 
+  // Set effectTarget based on node type (SVG nodes need 'content' for drop-shadow)
+  if (node.style && typeof node.style === 'object') {
+    node.style.effectTarget = (node.svgContent || node.svgId) ? 'content' : 'self';
+  }
+
   // subtree fully removed — no subtree promotion
 
   // Recurse

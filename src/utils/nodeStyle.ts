@@ -5,7 +5,7 @@ import { tokensFromParsedEffects, mergeInherited, formatTokensToCss } from './ef
 
 export type EffectTarget = 'self' | 'content';
 export interface NodeStyleShape {
-  effectTarget?: EffectTarget;
+  effectTarget: EffectTarget;
   opacity?: number;
   blendMode?: string;
   fills?: unknown[];
@@ -41,10 +41,10 @@ export function collectNodeBoxCss(
   const opacityCss = (typeof opacityVal === 'number' && opacityVal !== 1) ? `opacity:${opacityVal};` : '';
   
   const blendMode = style?.blendMode;
-  const blendModeCss = (typeof blendMode === 'string' && blendMode !== 'normal' && blendMode !== 'pass-through') 
-    ? `mix-blend-mode:${blendMode};` 
+  const blendModeCss = (typeof blendMode === 'string' && blendMode !== 'normal' && blendMode !== 'pass-through')
+    ? `mix-blend-mode:${blendMode};`
     : '';
-  const target: EffectTarget = style?.effectTarget ?? 'self';
+  const target: EffectTarget = style?.effectTarget || 'self';
   let tokens = tokensFromParsedEffects(effects, target, isText);
   if (stroke.boxShadow.length > 0) tokens.boxShadows.push(...stroke.boxShadow);
   if (opts?.inheritedShadows && opts.inheritedShadows.length > 0) {
