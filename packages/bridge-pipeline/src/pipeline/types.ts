@@ -76,10 +76,6 @@ export type DocumentConfig = {
   bodyHtml: string;
   viewport: Viewport;
   bounds: Bounds;
-  fonts?: {
-    googleFontsUrl?: string | null;
-    chineseFontsUrls?: string[];
-  };
   styles?: {
     cssRules?: string;
     utilityCss?: string;
@@ -109,7 +105,5 @@ export type PreviewBuildInput = {
   irNodes: RenderNodeIR[];
   cssRules: string;
   renderUnion: Rect;
-  googleFontsUrl?: string | null;
-  chineseFontsUrls?: string[];
   debugEnabled?: boolean;
 };

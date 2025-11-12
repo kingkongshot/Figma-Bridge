@@ -1,4 +1,3 @@
-import { TailwindConverter } from 'css-to-tailwindcss';
 import type { LayoutInfo } from '../pipeline/types';
 
 export type UtilityMapResult = {
@@ -29,24 +28,8 @@ function stringifyCss(entries: Entry[]): string {
   return entries.map(([k, v]) => `${k}:${v};`).join('');
 }
 
-// TailwindConverter is async; keep a single instance and a small result cache
-let _converter: TailwindConverter | null = null;
+// Simple in-memory cache for css → utility results
 const _cache = new Map<string, UtilityMapResult>();
-
-function getConverter(): TailwindConverter {
-  if (_converter) return _converter;
-  _converter = new TailwindConverter({
-    remInPx: 16,
-    arbitraryPropertiesIsEnabled: true,
-    tailwindConfig: {
-      // Avoid global resets if later we decide to include Tailwind CSS
-      corePlugins: { preflight: false },
-      theme: {},
-      content: [],
-    } as any,
-  });
-  return _converter!;
-}
 
 function isAllowedClass(tw: string): boolean {
   if (!tw) return false;
@@ -102,24 +85,186 @@ export async function cssToTailwindClasses(css: string): Promise<UtilityMapResul
     return empty;
   }
 
-  // Wrap declarations into a temporary selector for the converter
-  const input = `.x{${css}}`;
-  const { nodes } = await getConverter().convertCSS(input);
-  const twClasses: string[] = Array.isArray(nodes) && nodes.length ? (nodes[0].tailwindClasses || []) : [];
-  const filtered = twClasses.filter(isAllowedClass);
-
-  // Rebuild remaining CSS: drop properties that are represented by kept classes
+  // Parse entries and generate basic Tailwind classes without external converter
   const kept: Entry[] = [];
-  const classes = new Set(filtered);
+  const classes = new Set<string>();
   const entries = parseCssEntries(css);
 
-  // 生成任意像素的 gap/padding/margin 的 bracket 类（如 gap-[9px], p-[17px], -mt-[4px]）
+  // Helpers for spacing scale mapping (Tailwind spacing scale: 1 = 0.25rem = 4px)
   function parsePx(v: string): number | null {
     const m = v.trim().match(/^(-)?(\d+(?:\.\d+)?)px$/i);
     if (!m) return null;
     const num = parseFloat(m[2]);
     return m[1] ? -num : num;
   }
+  function pxToScale(n: number): string | null {
+    const scaled = n / 4;
+    const s2 = Math.round(scaled * 2);
+    if (Math.abs(scaled * 2 - s2) < 1e-6) {
+      const val = s2 / 2;
+      return Number.isInteger(val) ? String(val) : String(val);
+    }
+    return null;
+  }
+  function isNonNegative(n: number | null): n is number { return typeof n === 'number' && isFinite(n) && n >= 0; }
+  function isAnyNumber(n: number | null): n is number { return typeof n === 'number' && isFinite(n); }
+
+  // 1) Basic one-to-one mappings (layout semantics and non-spacing)
+  for (const [kRaw, vRaw] of entries) {
+    const k = kRaw.toLowerCase();
+    const v = vRaw.toLowerCase().trim();
+    // display
+    if (k === 'display' && (v === 'flex' || v === 'inline-flex')) {
+      classes.add(v);
+      continue;
+    }
+    // flex-direction
+    if (k === 'flex-direction' && v === 'column') { classes.add('flex-col'); continue; }
+    // flex-wrap
+    if (k === 'flex-wrap') {
+      if (v === 'wrap') classes.add('flex-wrap');
+      else if (v === 'nowrap') classes.add('flex-nowrap');
+      else if (v === 'wrap-reverse') classes.add('flex-wrap-reverse');
+      continue;
+    }
+    // justify-content
+    if (k === 'justify-content') {
+      const map: Record<string, string> = {
+        'center': 'justify-center',
+        'flex-end': 'justify-end',
+        'space-between': 'justify-between',
+        'space-around': 'justify-around',
+        'space-evenly': 'justify-evenly',
+      };
+      const tw = map[v]; if (tw) classes.add(tw);
+      continue;
+    }
+    // align-items
+    if (k === 'align-items') {
+      const map: Record<string, string> = {
+        'center': 'items-center',
+        'flex-start': 'items-start',
+        'flex-end': 'items-end',
+        'baseline': 'items-baseline',
+      };
+      const tw = map[v]; if (tw) classes.add(tw);
+      continue;
+    }
+    // align-self
+    if (k === 'align-self') {
+      const map: Record<string, string> = {
+        'stretch': 'self-stretch',
+        'center': 'self-center',
+        'flex-start': 'self-start',
+        'flex-end': 'self-end',
+        'baseline': 'self-baseline',
+      };
+      const tw = map[v]; if (tw) classes.add(tw);
+      continue;
+    }
+    // flex-basis
+    if (k === 'flex-basis') {
+      if (v === '0' || v === '0px') classes.add('basis-0');
+      else if (v === 'auto') classes.add('basis-auto');
+      continue;
+    }
+    // flex-grow/shrink
+    if (k === 'flex-grow' && v === '1') { classes.add('grow'); continue; }
+    if (k === 'flex-shrink' && v === '0') { classes.add('shrink-0'); continue; }
+    // box-sizing
+    if (k === 'box-sizing') {
+      if (v === 'border-box') classes.add('box-border');
+      else if (v === 'content-box') classes.add('box-content');
+      continue;
+    }
+    // overflow family
+    if (k === 'overflow' && /^(visible|hidden|auto|scroll)$/.test(v)) { classes.add(`overflow-${v}`); continue; }
+    if (k === 'overflow-x' && /^(visible|hidden|auto|scroll)$/.test(v)) { classes.add(`overflow-x-${v}`); continue; }
+    if (k === 'overflow-y' && /^(visible|hidden|auto|scroll)$/.test(v)) { classes.add(`overflow-y-${v}`); continue; }
+    // text-align
+    if (k === 'text-align') {
+      const map: Record<string, string> = { 'left': 'text-left', 'center': 'text-center', 'right': 'text-right', 'justify': 'text-justify' };
+      const tw = map[v]; if (tw) classes.add(tw);
+      continue;
+    }
+    // white-space
+    if (k === 'white-space') {
+      const map: Record<string, string> = { 'normal': 'whitespace-normal', 'nowrap': 'whitespace-nowrap', 'pre': 'whitespace-pre', 'pre-wrap': 'whitespace-pre-wrap' };
+      const tw = map[v]; if (tw) classes.add(tw);
+      continue;
+    }
+    // gap (scale only here; arbitrary handled later when no scale exists)
+    if (k === 'gap') {
+      const n = parsePx(vRaw);
+      if (isNonNegative(n)) {
+        const s = pxToScale(n);
+        if (s !== null) classes.add(`gap-${s}`);
+      }
+      continue;
+    }
+    // padding family → generate scale classes only when fully representable
+    if (k === 'padding') {
+      const parts = vRaw.split(/\s+/).filter(Boolean);
+      if (parts.length === 1) {
+        const n = parsePx(parts[0]); const s = isNonNegative(n) ? pxToScale(n) : null;
+        if (s !== null) classes.add(`p-${s}`);
+      } else if (parts.length === 2) {
+        const ny = parsePx(parts[0]); const sy = isNonNegative(ny) ? pxToScale(ny!) : null;
+        const nx = parsePx(parts[1]); const sx = isNonNegative(nx) ? pxToScale(nx!) : null;
+        if (sy !== null && sx !== null) { classes.add(`py-${sy}`); classes.add(`px-${sx}`); }
+      } else if (parts.length === 4) {
+        const [nt, nr, nb, nl] = parts.map(parsePx);
+        const st = isNonNegative(nt) ? pxToScale(nt!) : null;
+        const sr = isNonNegative(nr) ? pxToScale(nr!) : null;
+        const sb = isNonNegative(nb) ? pxToScale(nb!) : null;
+        const sl = isNonNegative(nl) ? pxToScale(nl!) : null;
+        if (st !== null && sr !== null && sb !== null && sl !== null) {
+          classes.add(`pt-${st}`); classes.add(`pr-${sr}`); classes.add(`pb-${sb}`); classes.add(`pl-${sl}`);
+        }
+      }
+      continue;
+    }
+    if (k === 'padding-top' || k === 'padding-right' || k === 'padding-bottom' || k === 'padding-left') {
+      const n = parsePx(vRaw); const s = isNonNegative(n) ? pxToScale(n!) : null;
+      if (s !== null) {
+        const map: Record<string,string> = { 'padding-top':'pt','padding-right':'pr','padding-bottom':'pb','padding-left':'pl' };
+        classes.add(`${map[k]}-${s}`);
+      }
+      continue;
+    }
+    // margin family (allow negative values)
+    if (k === 'margin') {
+      const parts = vRaw.split(/\s+/).filter(Boolean);
+      if (parts.length === 1) {
+        const n = parsePx(parts[0]); const s = isAnyNumber(n) ? pxToScale(Math.abs(n!)) : null; const sign = (n ?? 0) < 0 ? '-' : '';
+        if (s !== null) classes.add(`${sign}m-${s}`);
+      } else if (parts.length === 2) {
+        const ny = parsePx(parts[0]); const sy = isAnyNumber(ny) ? pxToScale(Math.abs(ny!)) : null; const sySign = (ny ?? 0) < 0 ? '-' : '';
+        const nx = parsePx(parts[1]); const sx = isAnyNumber(nx) ? pxToScale(Math.abs(nx!)) : null; const sxSign = (nx ?? 0) < 0 ? '-' : '';
+        if (sy !== null && sx !== null) { classes.add(`${sySign}my-${sy}`); classes.add(`${sxSign}mx-${sx}`); }
+      } else if (parts.length === 4) {
+        const [nt, nr, nb, nl] = parts.map(parsePx);
+        const st = isAnyNumber(nt) ? pxToScale(Math.abs(nt!)) : null; const stSign = (nt ?? 0) < 0 ? '-' : '';
+        const sr = isAnyNumber(nr) ? pxToScale(Math.abs(nr!)) : null; const srSign = (nr ?? 0) < 0 ? '-' : '';
+        const sb = isAnyNumber(nb) ? pxToScale(Math.abs(nb!)) : null; const sbSign = (nb ?? 0) < 0 ? '-' : '';
+        const sl = isAnyNumber(nl) ? pxToScale(Math.abs(nl!)) : null; const slSign = (nl ?? 0) < 0 ? '-' : '';
+        if (st !== null && sr !== null && sb !== null && sl !== null) {
+          classes.add(`${stSign}mt-${st}`); classes.add(`${srSign}mr-${sr}`); classes.add(`${sbSign}mb-${sb}`); classes.add(`${slSign}ml-${sl}`);
+        }
+      }
+      continue;
+    }
+    if (k === 'margin-top' || k === 'margin-right' || k === 'margin-bottom' || k === 'margin-left') {
+      const n = parsePx(vRaw); const s = isAnyNumber(n) ? pxToScale(Math.abs(n!)) : null; const sign = (n ?? 0) < 0 ? '-' : '';
+      if (s !== null) {
+        const map: Record<string,string> = { 'margin-top':'mt','margin-right':'mr','margin-bottom':'mb','margin-left':'ml' };
+        classes.add(`${sign}${map[k]}-${s}`);
+      }
+      continue;
+    }
+  }
+
+  // 生成任意像素的 gap/padding/margin 的 bracket 类（如 gap-[9px], p-[17px], -mt-[4px]）
   // 统一数值精度到 3 位小数，去掉多余的 0
   function fmt(n: number): string {
     return String(parseFloat(n.toFixed(3)));

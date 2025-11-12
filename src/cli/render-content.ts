@@ -5,9 +5,8 @@
 
 import fs from 'fs';
 import path from 'path';
-import { compositionToIR } from '../pipeline/ir';
+import { figmaToHtml } from '@bridge/pipeline';
 import { warmupChineseFontsMapping } from '../utils/fonts';
-import { createContentAssets, createContentHtml } from '../pipeline/html';
 
 type AnyObj = Record<string, any>;
 
@@ -61,23 +60,21 @@ async function main() {
   // Keep parity with server: warm up fonts mapping but never fail
   try { await warmupChineseFontsMapping(); } catch {}
 
-  const ir = compositionToIR(composition);
+  const result = await figmaToHtml({ composition }, { assetUrlProvider: (id, type) => (type === 'image' ? `/images/${id}.png` : `/svgs/${id}`), debugEnabled: false });
   const outDir = path.join(process.cwd(), 'debug', 'logs', 'content');
   ensureCleanDir(outDir);
 
-  const assets = await createContentAssets(ir.nodes, ir.cssRules, ir.fontMeta.googleFontsUrl, ir.fontMeta.chineseFontsUrls || []);
   const bodyPath = path.join(outDir, 'body.html');
   const cssPath = path.join(outDir, 'styles.css');
   const headLinksPath = path.join(outDir, 'head-links.html');
-  write(bodyPath, assets.bodyHtml);
-  write(cssPath, assets.cssText);
-  write(headLinksPath, assets.headLinks);
+  write(bodyPath, result.content.bodyHtml);
+  write(cssPath, result.content.cssText);
+  write(headLinksPath, '');
 
-  const indexHtml = `<!doctype html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"utf-8\"/>\n    <title>Content Preview</title>\n${assets.headLinks}    <link rel=\"stylesheet\" href=\"./styles.css\"/>\n  </head>\n  <body>\n    <div class=\"figma-export\">\n${assets.bodyHtml}\n    </div>\n  </body>\n</html>`;
+  const indexHtml = `<!doctype html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"utf-8\"/>\n    <title>Content Preview</title>\n    <link rel=\"stylesheet\" href=\"./styles.css\"/>\n  </head>\n  <body>\n    <div class=\"figma-export\">\n${result.content.bodyHtml}\n    </div>\n  </body>\n</html>`;
   write(path.join(outDir, 'index.html'), indexHtml);
 
-  const singleFile = await createContentHtml(ir.nodes, ir.cssRules, ir.fontMeta.googleFontsUrl, ir.fontMeta.chineseFontsUrls || []);
-  write(path.join(outDir, 'single-file.html'), singleFile);
+  write(path.join(outDir, 'single-file.html'), result.html);
 
   console.log('Content assets generated. Open for quick preview:');
   console.log(' - ' + path.join(outDir, 'index.html'));

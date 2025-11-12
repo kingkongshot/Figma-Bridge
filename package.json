@@ -4,10 +4,12 @@
   "description": "Bridge from Figma designs to code with NodeIR data model",
   "main": "dist/index.js",
   "scripts": {
+    "predev": "npm run build:lib",
     "dev": "npm run kill-port && nodemon --exec ts-node src/index.ts",
     "dev:clean": "npm run kill-port && nodemon --exec ts-node src/index.ts --watch src --ext ts,json",
     "kill-port": "lsof -ti:7788 | xargs kill -9 2>/dev/null || true",
-    "build": "tsc",
+    "build:lib": "tsc -p packages/bridge-pipeline/tsconfig.json",
+    "build": "npm run build:lib && tsc",
     "start": "node dist/index.js",
     "render-json": "ts-node src/cli/render-json.ts",
     "render-ir": "ts-node src/cli/render-ir.ts",
@@ -40,9 +42,9 @@
     "typescript": "^5.4.2"
   },
   "dependencies": {
+    "@bridge/pipeline": "file:packages/bridge-pipeline",
     "cors": "^2.8.5",
     "express": "^4.18.3",
-    "css-to-tailwindcss": "^1.0.5",
     "html-to-image": "^1.11.13",
     "js-beautify": "^1.15.4",
     "linkedom": "^0.18.12",

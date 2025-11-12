@@ -137,3 +137,4 @@ export interface CompositionInput {
   absOrigin: { x: number; y: number };
   children: FigmaNode[];
 }
+

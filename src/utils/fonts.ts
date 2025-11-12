@@ -1,10 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { createLogger } from './logger';
-
-const logger = createLogger();
-
-const STANDARD_FONT_WEIGHTS = [100, 200, 300, 400, 500, 600, 700, 800, 900];
+import { FontCollector as BaseFontCollector, extractFontsFromComposition as baseExtractFontsFromComposition } from '@bridge/pipeline';
 
 const CHINESE_FONTS_INDEX_URL = 'https://raw.githubusercontent.com/KonghaYao/chinese-free-web-font-storage/branch/index.json';
 
@@ -102,7 +98,6 @@ async function fetchChineseFontsMapping(): Promise<Record<string, string>> {
 function getChineseFontsMapping(): Record<string, string> {
   if (fontMappingState.status === 'loaded') return fontMappingState.mapping;
   if (fontMappingState.status === 'failed') {
-    logger.debug('Chinese fonts mapping not available, using fallback');
     return {};
   }
   throw new Error('BUG: getChineseFontsMapping called before warmup');
@@ -146,7 +141,6 @@ export async function warmupChineseFontsMapping(): Promise<void> {
     fontMappingState = { status: 'loaded', mapping };
   } catch (err) {
     fontMappingState = { status: 'failed', error: err as Error };
-    logger.warn('Chinese fonts warmup failed; server will run without online fonts', { error: err });
   }
 }
 
@@ -154,120 +148,34 @@ export function isChineseFontsReady(): boolean {
   return fontMappingState.status === 'loaded';
 }
 
-export interface FontInfo {
-  family: string;
-  weights: Set<number>;
-  styles: Set<string>;
-}
-
-
-export class FontCollector {
-  private fonts = new Map<string, FontInfo>();
-
-  add(family: string, weight?: number, style?: string): void {
-    if (!this.fonts.has(family)) {
-      this.fonts.set(family, {
-        family,
-        weights: new Set(),
-        styles: new Set(),
-      });
-    }
-    const info = this.fonts.get(family)!;
-    if (weight) info.weights.add(weight);
-    if (style) info.styles.add(style);
-  }
-
-  getGoogleFontsUrl(): string | null {
-    const specs: string[] = [];
-    
-    for (const [family, info] of this.fonts) {
-      const googleName = family.replace(/\s+/g, '+');
-      const hasItalic = Array.from(info.styles).some(s => s.toLowerCase().includes('italic'));
-      
-      const allWeights = [...new Set([...STANDARD_FONT_WEIGHTS, ...info.weights])].sort((a, b) => a - b);
-      
-      const axes = hasItalic ? 'ital,wght' : 'wght';
-      const values = allWeights.flatMap(w => 
-        hasItalic ? [`0,${w}`, `1,${w}`] : [`${w}`]
-      );
-      specs.push(`family=${googleName}:${axes}@${values.join(';')}`);
-    }
-
-    return specs.length ? `https://fonts.googleapis.com/css2?${specs.join('&')}&display=swap` : null;
-  }
-
+// Extend pipeline FontCollector to add Chinese CDN URLs without duplicating logic
+export class FontCollector extends BaseFontCollector {
+  // Build a unique list of Chinese font CSS URLs from collected families
   getChineseFontsUrls(): string[] {
     const urls: string[] = [];
     const mapping = getChineseFontsMapping();
     const seenPaths = new Set<string>();
-
-    for (const [family] of this.fonts) {
-      const relativePath = mapping[family];
+    for (const info of this.getAllFonts()) {
+      const relativePath = mapping[info.family];
       if (relativePath && !seenPaths.has(relativePath)) {
         seenPaths.add(relativePath);
-        const cdnUrls = generateCdnUrls(relativePath);
-        urls.push(...cdnUrls);
+        urls.push(...generateCdnUrls(relativePath));
       }
     }
-
     return urls;
   }
-
-  getAllFonts(): FontInfo[] {
-    return Array.from(this.fonts.values());
-  }
 }
 
-export function buildFontStack(family: string): string {
-  const needsQuotes = family.includes(' ') || family.includes('-');
-  return needsQuotes ? `'${family}', sans-serif` : `${family}, sans-serif`;
-}
-
+// Wrap pipeline extractor so downstream gets the extended collector API
 export function extractFontsFromComposition(composition: any): FontCollector {
-  const collector = new FontCollector();
-
-  function walkNode(node: any): void {
-    if (!node) return;
-
-    if (node.text?.segments) {
-      for (const seg of node.text.segments) {
-        if (seg.fontName?.family) {
-          const weight = seg.fontWeight || inferWeightFromStyle(seg.fontName.style);
-          collector.add(seg.fontName.family, weight, seg.fontName.style);
-        }
-      }
-    }
-
-    // subtree deprecated; children are already traversed
-
-    if (Array.isArray(node.children)) {
-      node.children.forEach((c: any) => walkNode(c));
-    }
+  const base = baseExtractFontsFromComposition(composition);
+  const ext = new FontCollector();
+  // Rehydrate extended collector using public getters
+  for (const f of base.getAllFonts()) {
+    // Add weights
+    for (const w of f.weights) ext.add(f.family, w);
+    // Add styles
+    for (const s of f.styles) ext.add(f.family, undefined, s);
   }
-
-  if (Array.isArray(composition?.children)) {
-    composition.children.forEach((c: any) => walkNode(c));
-  }
-
-  return collector;
-}
-
-function inferWeightFromStyle(style?: string): number {
-  if (!style) return 400;
-  const s = style
-    .toLowerCase()
-    .replace(/[-_]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  
-  if (s.includes('thin') || s.includes('hairline')) return 100;
-  if (s.includes('extra light') || s.includes('ultra light') || s.includes('extralight') || s.includes('ultralight')) return 200;
-  if (s.includes('light') && !s.includes('extralight') && !s.includes('ultralight')) return 300;
-  if (s.includes('medium')) return 500;
-  if (s.includes('semi bold') || s.includes('semibold') || s.includes('demi bold') || s.includes('demibold')) return 600;
-  if (s.includes('extra bold') || s.includes('ultra bold') || s.includes('extrabold') || s.includes('ultrabold')) return 800;
-  if (s.includes('black') || s.includes('heavy')) return 900;
-  if (s.includes('bold') && !s.includes('semibold') && !s.includes('extrabold') && !s.includes('ultrabold')) return 700;
-  
-  return 400;
+  return ext;
 }

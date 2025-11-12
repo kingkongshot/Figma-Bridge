@@ -2,27 +2,26 @@ import type { RenderNodeIR, DocumentConfig, Viewport, Bounds, Rect, RenderBoxCon
 import { CssCollector } from '../utils/cssCollector';
 import { buildSharedClasses, generateClassCss } from '../utils/classExtractor';
 import { optimizeBoxCss } from '../utils/css-optimizer';
-import { formatHtml } from '../utils/format';
 import { layoutToTailwindClasses, cssToTailwindClasses } from '../utils/tailwind-mapper';
 import { buildUtilityCssSelective } from '../utils/utility-css';
-import { buildHtmlHead, buildHtmlBody, buildFontLinks } from '../utils/html-builder';
+import { buildHtmlHead, buildHtmlBody, buildBaseStyles } from '../utils/html-builder';
 import { splitClassTokens } from '../utils/css-parser';
 import { migrateShadowsToOuter } from '../utils/shadow-migrator';
 import { getSemanticClassName } from '../utils/class-naming';
 
 // Why: avoid one-off utility classes — only promote widths/heights that repeat
-let __sizeFreq: { w: Map<number, number>; h: Map<number, number> } | null = null;
+type SizeFreq = { w: Map<number, number>; h: Map<number, number> };
 
-function shouldUseWidthClass(v: unknown): boolean {
+function shouldUseWidthClass(v: unknown, sizeFreq?: SizeFreq): boolean {
   if (typeof v !== 'number' || !isFinite(v)) return false;
-  if (!__sizeFreq) return true;
-  return (__sizeFreq.w.get(v) || 0) > 1;
+  if (!sizeFreq) return true;
+  return (sizeFreq.w.get(v) || 0) > 1;
 }
 
-function shouldUseHeightClass(v: unknown): boolean {
+function shouldUseHeightClass(v: unknown, sizeFreq?: SizeFreq): boolean {
   if (typeof v !== 'number' || !isFinite(v)) return false;
-  if (!__sizeFreq) return true;
-  return (__sizeFreq.h.get(v) || 0) > 1;
+  if (!sizeFreq) return true;
+  return (sizeFreq.h.get(v) || 0) > 1;
 }
 
 function collectSizeFreq(nodes: RenderNodeIR[], outW: Map<number, number>, outH: Map<number, number>): void {
@@ -169,6 +168,7 @@ type RenderContext = {
   applySharedClass?: (css: string) => { className: string | null; newCss: string };
   omitPositionOverride?: boolean;
   usedClasses?: Set<string>;
+  sizeFreq?: SizeFreq;
 };
 
 function getRootPadding(irNodes: RenderNodeIR[]): { left: number; top: number } | null {
@@ -444,12 +444,12 @@ async function renderFrameNode(ctx: RenderContext): Promise<string> {
   if (ctx.mode === 'content' && !hasWrapper) {
     const util = await layoutToTailwindClasses(layout, boxCss || '');
     if (util.classNames.length) utilClasses.push(...util.classNames);
-    if (typeof layout.width === 'number' && shouldUseWidthClass(layout.width)) {
+    if (typeof layout.width === 'number' && shouldUseWidthClass(layout.width, ctx.sizeFreq)) {
       const cw = `w-[${Math.round(layout.width*100)/100}px]`;
       utilClasses.push(cw);
       if (ctx.usedClasses) ctx.usedClasses.add(cw);
     }
-    if (typeof layout.height === 'number' && shouldUseHeightClass(layout.height)) {
+    if (typeof layout.height === 'number' && shouldUseHeightClass(layout.height, ctx.sizeFreq)) {
       const ch = `h-[${Math.round(layout.height*100)/100}px]`;
       utilClasses.push(ch);
       if (ctx.usedClasses) ctx.usedClasses.add(ch);
@@ -525,12 +525,12 @@ async function renderTextNode(ctx: RenderContext): Promise<string> {
     const util = await layoutToTailwindClasses(ctx.irNode.layout, boxCss || '');
     if (util.classNames.length) utilClassesT.push(...util.classNames);
     const w = ctx.irNode.layout.width; const h = ctx.irNode.layout.height;
-    if (typeof w === 'number' && shouldUseWidthClass(w)) {
+    if (typeof w === 'number' && shouldUseWidthClass(w, ctx.sizeFreq)) {
       const cw = `w-[${Math.round(w*100)/100}px]`;
       utilClassesT.push(cw);
       if (ctx.usedClasses) ctx.usedClasses.add(cw);
     }
-    if (typeof h === 'number' && shouldUseHeightClass(h)) {
+    if (typeof h === 'number' && shouldUseHeightClass(h, ctx.sizeFreq)) {
       const ch = `h-[${Math.round(h*100)/100}px]`;
       utilClassesT.push(ch);
       if (ctx.usedClasses) ctx.usedClasses.add(ch);
@@ -702,7 +702,8 @@ function wrapInDocument(config: DocumentConfig): string {
   const head = buildHtmlHead(config);
   const body = buildHtmlBody(config);
   const rawHtml = `<!doctype html>\n<html lang=\"en\">\n${head}\n${body}\n</html>`;
-  return formatHtml(rawHtml);
+  // Do not prettify here; let host decide formatting/minification
+  return rawHtml;
 }
 
 function buildDebugStyles(): string {
@@ -788,12 +789,12 @@ async function buildPreviewPieces(
   }
 
   // Why: precompute w/h usage frequency to decide utility vs inline
-  {
+  const __localSizeFreq = (() => {
     const wMap = new Map<number, number>();
     const hMap = new Map<number, number>();
     collectSizeFreq(irNodes, wMap, hMap);
-    __sizeFreq = { w: wMap, h: hMap };
-  }
+    return { w: wMap, h: hMap } as SizeFreq;
+  })();
 
   const boxCssList: string[] = irNodes.map((n) => (n?.style?.boxCss || ''));
   const shared = buildSharedClasses(boxCssList, 2);
@@ -807,10 +808,10 @@ async function buildPreviewPieces(
 
   const contentPromises = irNodes.map((irNode, idx) => {
     const omitPositionOverride = !!(pad && idx === 0);
-    return renderNodeUnified(irNode, { stylePrefix: '', irNode, cssCollector: dummyCssCollector, mode: 'content', applySharedClass: shared.applier, omitPositionOverride, usedClasses });
+    return renderNodeUnified(irNode, { stylePrefix: '', irNode, cssCollector: dummyCssCollector, mode: 'content', applySharedClass: shared.applier, omitPositionOverride, usedClasses, sizeFreq: __localSizeFreq });
   });
   const debugPromises = debugEnabled
-    ? irNodes.map((irNode) => renderNodeUnified(irNode, { stylePrefix: '', irNode, cssCollector: dummyCssCollector, mode: 'debug' }))
+    ? irNodes.map((irNode) => renderNodeUnified(irNode, { stylePrefix: '', irNode, cssCollector: dummyCssCollector, mode: 'debug', sizeFreq: __localSizeFreq }))
     : [];
   const [contentParts, debugParts] = await Promise.all([Promise.all(contentPromises), Promise.all(debugPromises)]);
   shapeHtml.push(...contentParts);
@@ -823,7 +824,7 @@ async function buildPreviewPieces(
 export async function createPreviewHtml(
   config: PreviewBuildInput
 ): Promise<PreviewHtmlResult> {
-  const { composition, irNodes, cssRules, renderUnion, googleFontsUrl, chineseFontsUrls, debugEnabled = false } = config || ({} as PreviewBuildInput);
+  const { composition, irNodes, cssRules, renderUnion, debugEnabled = false } = config || ({} as PreviewBuildInput);
   if (!composition || typeof composition !== 'object') {
     throw new Error('Invalid composition payload');
   }
@@ -852,7 +853,6 @@ export async function createPreviewHtml(
     bodyHtml: shapeHtml.join('\n'),
     viewport,
     bounds: contentBounds,
-    fonts: { googleFontsUrl, chineseFontsUrls },
     styles: { cssRules: `${cssRules || ''}\n${sharedCss}`, utilityCss },
     contentLayerStyle,
   });
@@ -863,7 +863,7 @@ export async function createPreviewHtml(
 export async function createPreviewAssets(
   config: PreviewBuildInput
 ): Promise<{ html: string; cssText: string; baseWidth: number; baseHeight: number; renderUnion: Rect; debugHtml: string; debugCss: string }> {
-  const { composition, irNodes, cssRules, renderUnion, googleFontsUrl, chineseFontsUrls, debugEnabled = false } = config || ({} as PreviewBuildInput);
+  const { composition, irNodes, cssRules, renderUnion, debugEnabled = false } = config || ({} as PreviewBuildInput);
   if (!composition || typeof composition !== 'object') {
     throw new Error('Invalid composition payload');
   }
@@ -889,35 +889,30 @@ export async function createPreviewAssets(
   );
   const overlayStr = debugEnabled ? debugHtml.join('\n') : '';
 
-  
-  const baseStyles = `html, body {\n  margin: 0;\n  font-family: -apple-system, BlinkMacSystemFont, \"Helvetica Neue\", Helvetica, Arial, sans-serif;\n  font-synthesis-weight: none;\n  background: transparent;\n  box-sizing: border-box;\n  overflow: hidden;\n}\n.viewport {\n  position: relative;\n  width: ${viewport.width}px;\n  height: ${viewport.height}px;\n  background: transparent;\n  box-sizing: border-box;\n  transform-origin: top left;\n}\n.view-offset {\n  position: absolute;\n  left: ${-viewport.offsetX}px;\n  top: ${-viewport.offsetY}px;\n  width: 100%;\n  height: 100%;\n  background: transparent;\n  box-sizing: border-box;\n}\n.composition {\n  position: absolute;\n  left: 0px;\n  top: 0px;\n  width: ${bounds.width}px;\n  height: ${bounds.height}px;\n  background: transparent;\n  box-sizing: border-box;\n}\n.content-layer {\n  position: relative;\n  z-index: 0;\n}\n.frame, .shape, .text, .svg-container, .mask-container {\n  box-sizing: border-box;\n  position: relative;\n  z-index: 0;\n}\n.svg-container > svg {\n  display: block;\n  width: 100%;\n  height: 100%;\n  shape-rendering: geometricPrecision;\n}\n.svg-container > img {\n  display: block;\n  width: 100%;\n  height: 100%;\n}`;
+  const baseStyles = buildBaseStyles(viewport, bounds);
   const utilityCss = buildUtilityCssSelective(usedClasses);
   const cssText = `${baseStyles}\n${utilityCss}\n${cssRules || ''}\n${sharedCss}`;
-  const fontLinks = buildFontLinks(googleFontsUrl, chineseFontsUrls);
   const baseTag = `    <base href=\"/\">\n`;
 
-  const rawHtmlDoc = `<!doctype html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"utf-8\" />\n    <title>Bridge Preview</title>\n${baseTag}${fontLinks}    <link rel=\"stylesheet\" href=\"/preview/styles.css\"/>\n  </head>\n  <body>\n    <div class=\"viewport\">\n      <div class=\"view-offset\">\n        <div class=\"composition\" data-figma-render=\"1\">\n          <div class=\"content-layer\"${contentLayerStyle ? ` style=\\\"${contentLayerStyle}\\\"` : ''}>\n${shapeHtml.join('\n')}\n          </div>\n        </div>\n      </div>\n    </div>\n  </body>\n</html>`;
-
-  const htmlDoc = formatHtml(rawHtmlDoc);
+  const rawHtmlDoc = `<!doctype html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"utf-8\" />\n    <title>Bridge Preview</title>\n${baseTag}    <link rel=\"stylesheet\" href=\"/preview/styles.css\"/>\n  </head>\n  <body>\n    <div class=\"viewport\">\n      <div class=\"view-offset\">\n        <div class=\"composition\" data-figma-render=\"1\">\n          <div class=\"content-layer\"${contentLayerStyle ? ` style=\\\"${contentLayerStyle}\\\"` : ''}>\n${shapeHtml.join('\n')}\n          </div>\n        </div>\n      </div>\n    </div>\n  </body>\n</html>`;
 
   const debugCss = buildDebugStyles();
-  return { html: htmlDoc, cssText, baseWidth: viewport.width, baseHeight: viewport.height, renderUnion, debugHtml: overlayStr, debugCss };
+  // Keep raw HTML; host app may format or minify as needed
+  return { html: rawHtmlDoc, cssText, baseWidth: viewport.width, baseHeight: viewport.height, renderUnion, debugHtml: overlayStr, debugCss };
 }
 
 export async function createContentAssets(
   irNodes: RenderNodeIR[],
-  cssRules: string,
-  googleFontsUrl?: string | null,
-  chineseFontsUrls?: string[]
+  cssRules: string
 ): Promise<{ bodyHtml: string; cssText: string; headLinks: string }> {
   const dummyCssCollector = new CssCollector();
   // Why: compute size frequencies for this content export
-  {
+  const __localSizeFreq: SizeFreq = (() => {
     const wMap = new Map<number, number>();
     const hMap = new Map<number, number>();
     collectSizeFreq(irNodes, wMap, hMap);
-    __sizeFreq = { w: wMap, h: hMap };
-  }
+    return { w: wMap, h: hMap } as SizeFreq;
+  })();
   const boxCssList: string[] = irNodes.map((n) => (n?.style?.boxCss || ''));
   const shared = buildSharedClasses(boxCssList, 2);
   const sharedCss = generateClassCss(shared.classes, '.figma-export');
@@ -934,6 +929,7 @@ export async function createContentAssets(
           mode: 'content',
           applySharedClass: shared.applier,
           usedClasses,
+          sizeFreq: __localSizeFreq,
         })
       )
     );
@@ -944,25 +940,22 @@ export async function createContentAssets(
 .figma-export .svg-container > img{display:block;width:100%;height:100%;}`;
   const utilityCss = buildUtilityCssSelective(usedClasses, '.figma-export');
   const cssText = `${baseStyles}\n${utilityCss}\n${cssRules || ''}\n${sharedCss}`;
-  const headLinks = buildFontLinks(googleFontsUrl, chineseFontsUrls);
-
+  const headLinks = '';
   return { bodyHtml: nodeHtml.join('\n'), cssText, headLinks };
 }
 
 export async function createContentHtml(
   irNodes: RenderNodeIR[],
-  cssRules: string,
-  googleFontsUrl?: string | null,
-  chineseFontsUrls?: string[]
+  cssRules: string
 ): Promise<string> {
   const dummyCssCollector = new CssCollector();
   // Why: compute size frequencies for this content export
-  {
+  const __localSizeFreq: SizeFreq = (() => {
     const wMap = new Map<number, number>();
     const hMap = new Map<number, number>();
     collectSizeFreq(irNodes, wMap, hMap);
-    __sizeFreq = { w: wMap, h: hMap };
-  }
+    return { w: wMap, h: hMap } as SizeFreq;
+  })();
   const boxCssList: string[] = irNodes.map((n) => (n?.style?.boxCss || ''));
   const shared = buildSharedClasses(boxCssList, 2);
   const sharedCss = generateClassCss(shared.classes, '.figma-export');
@@ -979,6 +972,7 @@ export async function createContentHtml(
           mode: 'content',
           applySharedClass: shared.applier,
           usedClasses,
+          sizeFreq: __localSizeFreq,
         })
       )
     );
@@ -989,8 +983,8 @@ export async function createContentHtml(
 .figma-export .svg-container > img{display:block;width:100%;height:100%;}`;
   const utilityCss = buildUtilityCssSelective(usedClasses, '.figma-export');
   const styles = `${baseStyles}\n${utilityCss}\n${cssRules || ''}\n${sharedCss}`;
-  const fontLinks = buildFontLinks(googleFontsUrl, chineseFontsUrls);
 
-  const raw = `<!doctype html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"utf-8\" />\n    <title>Exported Content</title>\n${fontLinks}    <style>${styles}</style>\n  </head>\n  <body>\n    <div class=\"figma-export\">\n${nodeHtml.join('\n')}\n    </div>\n  </body>\n</html>`;
-  return formatHtml(raw);
+  const raw = `<!doctype html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"utf-8\" />\n    <title>Exported Content</title>\n    <style>${styles}</style>\n  </head>\n  <body>\n    <div class=\"figma-export\">\n${nodeHtml.join('\n')}\n    </div>\n  </body>\n</html>`;
+  // Return raw HTML; host can choose to format/minify
+  return raw;
 }

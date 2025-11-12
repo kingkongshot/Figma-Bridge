@@ -5,16 +5,11 @@ import fs from 'fs';
 import { exec } from 'child_process';
 import { processBatch as processImageBatch, ensureUploadsDir, listMissing } from './imageService';
 import type { ImageItem } from './imageService';
-import { compositionToIR } from './pipeline/ir';
-import type { RenderNodeIR } from './pipeline/types';
-import { createPreviewHtml, createPreviewAssets, createContentAssets, type PreviewHtmlResult } from './pipeline/html';
-import { normalizeComposition } from './utils/normalize';
-import { normalizeHtml } from './utils/htmlPost';
+import { figmaToHtml, normalizeComposition, compositionToIR, normalizeHtml } from '@bridge/pipeline';
 import { UPLOAD_DIR } from './imageService';
 import * as SvgService from './svgService';
-import { warmupChineseFontsMapping } from './utils/fonts';
+import { warmupChineseFontsMapping, extractFontsFromComposition } from './utils/fonts';
 import { getCacheStats, clearCache } from './cacheService';
-import { createLogger, listLogFiles, readTail } from './utils/logger';
 
 function loadEnvFile() {
   const envPath = path.join(process.cwd(), '.env');
@@ -65,7 +60,6 @@ app.options('*', cors({ ...corsOptions, preflightContinue: true }), (req, res) =
 
 app.use(express.json({ limit: '25mb' }));
 
-const logger = createLogger();
 
 app.use((req, res, next) => {
   const rid = Math.random().toString(36).slice(2, 8);
@@ -139,6 +133,47 @@ function writeDebugHtml(name: string, html: string) {
   fs.writeFileSync(filePath, html, 'utf8');
 }
 
+function buildHeadFontLinks(googleFontsUrl?: string | null, chineseFontsUrls?: string[]): string {
+  const lines: string[] = [];
+  const seenOrigins = new Set<string>();
+  const seenHrefs = new Set<string>();
+  if (googleFontsUrl) {
+    if (!seenOrigins.has('https://fonts.googleapis.com')) {
+      lines.push(`    <link rel="preconnect" href="https://fonts.googleapis.com">`);
+      seenOrigins.add('https://fonts.googleapis.com');
+    }
+    if (!seenOrigins.has('https://fonts.gstatic.com')) {
+      lines.push(`    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>`);
+      seenOrigins.add('https://fonts.gstatic.com');
+    }
+    if (!seenHrefs.has(googleFontsUrl)) {
+      lines.push(`    <link href="${googleFontsUrl}" rel="stylesheet">`);
+      seenHrefs.add(googleFontsUrl);
+    }
+  }
+  if (Array.isArray(chineseFontsUrls)) {
+    for (const href of chineseFontsUrls) {
+      try {
+        const origin = new URL(href).origin;
+        if (!seenOrigins.has(origin)) {
+          lines.push(`    <link rel="preconnect" href="${origin}">`);
+          seenOrigins.add(origin);
+        }
+        if (!seenHrefs.has(href)) {
+          lines.push(`    <link href="${href}" rel="stylesheet">`);
+          seenHrefs.add(href);
+        }
+      } catch {}
+    }
+  }
+  return lines.length ? lines.join('\n') + '\n' : '';
+}
+
+function injectHeadLinks(html: string, headLinks: string): string {
+  if (!headLinks) return html;
+  return html.replace(/<\/head>/i, headLinks + '</head>');
+}
+
 function writeDebugBinary(filename: string, data: Buffer) {
   if (!DEBUG_ENABLED) return;
   const filePath = path.join(DEBUG_LATEST, filename);
@@ -172,7 +207,7 @@ function ensureOutputDir() {
     fs.mkdirSync(path.join(OUTPUT_DIR, 'images'), { recursive: true });
     fs.mkdirSync(path.join(OUTPUT_DIR, 'svgs'), { recursive: true });
   } catch (e) {
-    logger.error('[output] failed to prepare output directory', { error: e });
+    // ignore: non-critical output dir preparation error; API will still respond
   }
 }
 
@@ -180,7 +215,7 @@ function ensurePreviewAssetsDir() {
   try {
     fs.mkdirSync(PREVIEW_ASSETS_DIR, { recursive: true });
   } catch (e) {
-    logger.error('[preview] failed to prepare preview assets directory', { error: e });
+    // ignore: non-critical preview assets dir preparation error
   }
 }
 
@@ -199,7 +234,7 @@ function writeOutputPackage(bodyHtml: string, cssText: string, headLinks: string
         try {
           fs.copyFileSync(src, dst);
         } catch (e) {
-          logger.warn('[output] copy image failed', { id, error: e });
+          // ignore individual copy failures; continue others
         }
       }
     }
@@ -210,7 +245,7 @@ function writeOutputPackage(bodyHtml: string, cssText: string, headLinks: string
         try {
           fs.copyFileSync(src, dst);
         } catch (e) {
-          logger.warn('[output] copy svg failed', { name, error: e });
+          // ignore individual copy failures; continue others
         }
       }
     }
@@ -225,9 +260,9 @@ function writeOutputPackage(bodyHtml: string, cssText: string, headLinks: string
     } catch {}
     const htmlDoc = formatHtml(rawHtmlDoc);
     fs.writeFileSync(path.join(OUTPUT_DIR, 'index.html'), htmlDoc, 'utf8');
-    logger.info('Output package written', { path: 'output/index.html' });
+    // output package written
   } catch (e) {
-    logger.warn('[output] failed to write output package', { error: e });
+    // ignore: output package write failure will be surfaced via API usage
   }
 }
 
@@ -275,7 +310,6 @@ app.post('/api/images/batch', (req, res) => {
       res.json({ success: true, ...result });
     }
   } catch (e: any) {
-    logger.error('[api] /api/images/batch failed', { error: e });
     res.status(500).json({ success: false, error: String(e?.message || e) });
   }
 });
@@ -310,7 +344,6 @@ app.post('/api/svgs/check', (req, res) => {
     const missing = SvgService.listMissing(ids);
     res.json({ success: true, missing });
   } catch (e: any) {
-    logger.error('[api] /api/svgs/check failed', { error: e });
     res.status(500).json({ success: false, error: String(e?.message || e) });
   }
 });
@@ -331,7 +364,6 @@ app.post('/api/svgs/batch', (req, res) => {
       res.json({ success: true, ...result });
     }
   } catch (e: any) {
-    logger.error('[api] /api/svgs/batch failed', { error: e });
     res.status(500).json({ success: false, error: String(e?.message || e) });
   }
 });
@@ -385,15 +417,12 @@ app.get('/api/languages', (_req, res) => {
           if (lang.code && lang.name) {
             languages.push({ code: lang.code, name: lang.name });
           }
-        } catch (e) {
-          logger.warn(`[languages] failed to parse ${file}`, { error: e });
-        }
+        } catch (e) { /* ignore parse error; skip file */ }
       }
     }
 
     res.json(languages);
   } catch (e: any) {
-    logger.error('[api] /api/languages failed', { error: e });
     res.status(500).json({ error: String(e?.message || e) });
   }
 });
@@ -416,18 +445,15 @@ app.get('/api/languages/:code', (req, res) => {
     const lang = JSON.parse(content);
     res.json(lang);
   } catch (e: any) {
-    logger.error('[api] /api/languages/:code failed', { error: e });
     res.status(500).json({ error: String(e?.message || e) });
   }
 });
 
 app.post('/api/composition', async (req, res) => {
-  try { logger.resetEphemeral(); } catch {}
   const originalPayload = req.body ?? null;
   const composition = originalPayload?.composition ?? null;
 
   if (!composition) {
-    logger.error('composition payload missing');
     res.status(400).json({ error: 'composition payload missing' });
     return;
   }
@@ -448,40 +474,50 @@ app.post('/api/composition', async (req, res) => {
           writeDebugBinary('figma-render.png', buf);
         }
       }
-    } catch (e) {
-      logger.error('[Server] Failed to save original debug data', { error: e });
-    }
+    } catch (e) { /* ignore debug write failures */ }
   }
 
-  let renderRes: PreviewHtmlResult;
-  let irResult: { nodes: RenderNodeIR[]; cssRules: string; renderUnion: { x: number; y: number; width: number; height: number }; fontMeta: { googleFontsUrl: string | null; chineseFontsUrls: string[]; fonts: any[] }; assetMeta: { images: string[] } };
+  let renderRes: { html: string; baseWidth: number; baseHeight: number; renderUnion: any; debugHtml: string; debugCss: string };
+  let lastResult: any;
+  let irResult: { nodes: any[] } | null = null;
+  // Fonts: compute once and reuse for preview + export
+  let googleFontsUrl: string | null = null;
+  let chineseFontsUrls: string[] = [];
   try {
     normalizeComposition(composition);
     if (DEBUG_ENABLED) {
       try { writeDebugJson('composition', composition); } catch {}
     }
 
-    irResult = compositionToIR(composition);
-    if (DEBUG_ENABLED) {
-      try { writeDebugJson('ir', { nodes: irResult.nodes, cssRules: irResult.cssRules, renderUnion: irResult.renderUnion, fontMeta: irResult.fontMeta, assetMeta: irResult.assetMeta }); } catch {}
+    const fc = extractFontsFromComposition(composition);
+    googleFontsUrl = globalSettings.useOnlineFonts ? fc.getGoogleFontsUrl() : null;
+    chineseFontsUrls = globalSettings.useOnlineFonts ? fc.getChineseFontsUrls() : [];
+
+    // Build IR for sidebar/properties (keep simple structure used by frontend)
+    try {
+      const ir = compositionToIR(composition as any);
+      irResult = { nodes: ir.nodes };
+      if (DEBUG_ENABLED) {
+        try { writeDebugJson('ir', { nodes: ir.nodes }); } catch {}
+      }
+    } catch (e) {
+      // IR generation failed; sidebar tree may be empty
     }
 
-    const previewAssets = await createPreviewAssets({
-      composition,
-      irNodes: irResult.nodes,
-      cssRules: irResult.cssRules,
-      renderUnion: irResult.renderUnion,
-      googleFontsUrl: globalSettings.useOnlineFonts ? irResult.fontMeta.googleFontsUrl : null,
-      chineseFontsUrls: globalSettings.useOnlineFonts ? irResult.fontMeta.chineseFontsUrls : [],
+    const result = await figmaToHtml({ composition }, {
+      assetUrlProvider: (id, type) => (type === 'image' ? `/images/${id}.png` : `/svgs/${id}`),
       debugEnabled: true,
     });
+    lastResult = result;
     try {
       ensurePreviewAssetsDir();
-      fs.writeFileSync(path.join(PREVIEW_ASSETS_DIR, 'styles.css'), previewAssets.cssText, 'utf8');
+      fs.writeFileSync(path.join(PREVIEW_ASSETS_DIR, 'styles.css'), result.cssText, 'utf8');
     } catch (e) {
-      logger.warn('[preview] failed to write styles.css', { error: e });
+      // ignore preview styles write failure
     }
-    renderRes = { html: previewAssets.html, baseWidth: previewAssets.baseWidth, baseHeight: previewAssets.baseHeight, renderUnion: previewAssets.renderUnion, debugHtml: previewAssets.debugHtml, debugCss: previewAssets.debugCss };
+    const headLinks = buildHeadFontLinks(googleFontsUrl, chineseFontsUrls);
+    const htmlWithFonts = injectHeadLinks(result.html, headLinks);
+    renderRes = { html: htmlWithFonts, baseWidth: result.baseWidth, baseHeight: result.baseHeight, renderUnion: result.renderUnion, debugHtml: result.debugHtml, debugCss: result.debugCss };
     if (DEBUG_ENABLED) {
       try {
         if (renderRes.html) writeDebugHtml('render.before', renderRes.html);
@@ -489,7 +525,6 @@ app.post('/api/composition', async (req, res) => {
       } catch {}
     }
   } catch (error: any) {
-    logger.error('render composition failed', { error: error?.message || String(error) });
     res.status(400).json({ error: error?.message || 'failed to render composition' });
     return;
   }
@@ -497,30 +532,23 @@ app.post('/api/composition', async (req, res) => {
   const post = normalizeHtml(renderRes.html);
   
   try {
-    const assets = await createContentAssets(irResult.nodes, irResult.cssRules, irResult.fontMeta.googleFontsUrl, irResult.fontMeta.chineseFontsUrls);
-    writeOutputPackage(assets.bodyHtml, assets.cssText, assets.headLinks, irResult.assetMeta?.images || [], (irResult as any).assetMeta?.svgs || []);
+    const headLinks2 = buildHeadFontLinks(googleFontsUrl, chineseFontsUrls);
+    const images = Array.isArray((lastResult as any)?.assets?.images) ? (lastResult as any).assets.images : [];
+    const svgs = Array.isArray((lastResult as any)?.assets?.svgs) ? (lastResult as any).assets.svgs : [];
+    writeOutputPackage(lastResult.content.bodyHtml, lastResult.content.cssText, headLinks2, images, svgs);
   } catch (e) {
-    logger.warn('[output] failed to build content HTML', { error: e });
+    // ignore content build failure
   }
   if (DEBUG_ENABLED) {
     try {
       writeDebugHtml('render.after', post.html);
-      if (post.report.changed) {
-        logger.info('HTML post-processing', {
-          valuesNormalized: post.report.stats.valuesNormalized,
-          elementsProcessed: post.report.stats.elementsProcessed,
-          steps: post.report.steps,
-        });
-      }
-      if (post.report.warnings.length > 0) {
-        logger.warn('HTML post-processing warnings', { warnings: post.report.warnings });
-      }
+      // omit runtime logging of post-processing; data remains available in report
     } catch {}
   }
 
   previewManager.update({
     composition,
-    ir: irResult,
+    ir: irResult || undefined,
     html: post.html,
     debugHtml: renderRes.debugHtml,
     debugCss: renderRes.debugCss,
@@ -569,40 +597,7 @@ app.post('/api/debug/snapshot', (req, res) => {
   }
 });
 
-app.post('/api/debug/log', (req, res) => {
-  const body = req.body || {};
-  const level = String(body.level || 'info').toLowerCase();
-  const message = typeof body.message === 'string' ? body.message : '';
-  const source = typeof body.source === 'string' ? body.source : undefined;
-  const context = body.context === undefined ? undefined : body.context;
-  if (!message) {
-    res.status(400).json({ success: false, error: 'message required' });
-    return;
-  }
-  const lvl = (['debug','info','warn','error'].includes(level) ? level : 'info') as 'debug'|'info'|'warn'|'error';
-  const rid = (req as any).rid;
-  logger.log(lvl, message, { source, rid, context });
-  res.json({ success: true });
-});
-
-app.get('/api/debug/logs', (_req, res) => {
-  const files = listLogFiles(logger.dir);
-  res.json({ dir: logger.dir, files });
-});
-
-app.get('/api/debug/logs/latest', (_req, res) => {
-  const lines = readTail(logger.file, 200);
-  res.json({ file: logger.file, lines });
-});
-
-app.get('/api/debug/logs/current', (_req, res) => {
-  let lines: string[] = [];
-  try {
-    const data = fs.readFileSync(logger.file, 'utf8');
-    lines = data.split(/\r?\n/).filter(Boolean);
-  } catch {}
-  res.json({ file: logger.file, lines });
-});
+// removed /api/debug/* routes per request: no runtime logging nor log endpoints
 
 app.get('/api/files', (_req, res) => {
   try {
@@ -630,7 +625,6 @@ app.get('/api/files', (_req, res) => {
     
     res.json(files);
   } catch (error) {
-    logger.error('Failed to list files', { error });
     res.status(500).json({ error: 'Failed to list files' });
   }
 });
@@ -648,7 +642,6 @@ app.get('/api/files/:filename', (req, res) => {
     const content = fs.readFileSync(filePath, 'utf8');
     res.json({ content, filename });
   } catch (error) {
-    logger.error('Failed to read file', { error });
     res.status(500).json({ error: 'Failed to read file' });
   }
 });
@@ -681,13 +674,11 @@ app.post('/api/open-directory', (req, res) => {
 
     exec(command, (error) => {
       if (error) {
-        logger.error('Failed to open directory', { error, command });
         return res.status(500).json({ error: 'Failed to open directory' });
       }
       res.json({ success: true });
     });
   } catch (error) {
-    logger.error('Failed to open directory', { error });
     res.status(500).json({ error: 'Failed to open directory' });
   }
 });
@@ -750,9 +741,6 @@ app.use('/', express.static(publicDir, { extensions: ['html'] }));
 
 warmupChineseFontsMapping().finally(() => {
   app.listen(PORT, () => {
-    logger.info('Server started', {
-      url: `http://localhost:${PORT}`,
-      preview: `http://localhost:${PORT}/index.html`
-    });
+    // server started
   });
 });

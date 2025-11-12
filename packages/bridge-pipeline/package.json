@@ -1,0 +1,14 @@
+{
+  "name": "@bridge/pipeline",
+  "version": "0.1.0",
+  "description": "Figma Bridge rendering pipeline (IR -> HTML/CSS) and helpers",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  }
+}
+

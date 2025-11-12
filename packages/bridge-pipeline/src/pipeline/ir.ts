@@ -5,17 +5,17 @@ import { collectTextCss, parseEffects, type ShadowEffect } from '../utils/css';
 import { matInv, matMul, matApply } from '../utils/matrix';
 import { computePositionCss, composeFlexGrowCss } from '../utils/layout';
 import type { getLayoutAxes } from '../utils/layout';
-import { extractFontsFromComposition, isChineseFontsReady } from '../utils/fonts';
+import { extractFontsFromComposition } from '../utils/fonts';
 import { normUpper } from '../utils/enum';
 import { computeLayout } from '../utils/layout-calculator';
 import { buildContent } from './content-builder';
 import { computeEffectsMode, shouldInheritShadows } from '../utils/effects-mode';
 import type { FigmaNode, CompositionInput } from '../types/figma';
 
-export function compositionToIR(composition: CompositionInput | { absOrigin?: { x: number; y: number }; children?: FigmaNode[] }): { nodes: RenderNodeIR[]; cssRules: string; rawComposition: any; renderUnion: { x: number; y: number; width: number; height: number }; fontMeta: { googleFontsUrl: string | null; chineseFontsUrls: string[]; fonts: { family: string; weights: number[]; styles: string[] }[] }; assetMeta: { images: string[]; svgs?: string[] } } {
+export function compositionToIR(composition: CompositionInput | { absOrigin?: { x: number; y: number }; children?: FigmaNode[] }): { nodes: RenderNodeIR[]; cssRules: string; rawComposition: any; renderUnion: { x: number; y: number; width: number; height: number }; fontMeta: { fonts: { family: string; weights: number[]; styles: string[] }[] }; assetMeta: { images: string[]; svgs?: string[] } } {
   if (!composition || typeof composition !== 'object') throw new Error('Invalid composition');
   const children = Array.isArray(composition.children) ? composition.children : [];
-  if (!children.length) return { nodes: [], cssRules: '', rawComposition: composition, renderUnion: { x: 0, y: 0, width: 0, height: 0 }, fontMeta: { googleFontsUrl: null, chineseFontsUrls: [], fonts: [] }, assetMeta: { images: [] } };
+  if (!children.length) return { nodes: [], cssRules: '', rawComposition: composition, renderUnion: { x: 0, y: 0, width: 0, height: 0 }, fontMeta: { fonts: [] }, assetMeta: { images: [] } };
 
   // Require upstream-provided absOrigin; no downstream guessing
   const absOrigin = composition.absOrigin;
@@ -62,8 +62,6 @@ export function compositionToIR(composition: CompositionInput | { absOrigin?: { 
   const renderUnion = { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
 
   const fc = extractFontsFromComposition(composition);
-  const googleFontsUrl = fc.getGoogleFontsUrl();
-  const chineseFontsUrls = isChineseFontsReady() ? fc.getChineseFontsUrls() : [];
   const fonts = fc.getAllFonts().map(f => ({ family: f.family, weights: Array.from(f.weights).sort((a,b)=>a-b), styles: Array.from(f.styles) }));
 
   function collectImages(node: FigmaNode, out: Set<string>) {
@@ -90,7 +88,7 @@ export function compositionToIR(composition: CompositionInput | { absOrigin?: { 
   nodes.forEach(collectSvgs);
   const assetMeta: { images: string[]; svgs: string[] } = { images: Array.from(imgSet), svgs: Array.from(svgSet) };
 
-  return { nodes, cssRules: cssCollector.toString(), rawComposition: composition, renderUnion, fontMeta: { googleFontsUrl, chineseFontsUrls, fonts }, assetMeta };
+  return { nodes, cssRules: cssCollector.toString(), rawComposition: composition, renderUnion, fontMeta: { fonts }, assetMeta };
 }
 
 function collectBoxCssForNode(node: FigmaNode, cssCollector: CssCollector, inheritedShadows?: ShadowEffect[] | null): string {

@@ -5,9 +5,8 @@
 
 import fs from 'fs';
 import path from 'path';
-import { compositionToIR } from '../pipeline/ir';
+import { figmaToHtml } from '@bridge/pipeline';
 import { warmupChineseFontsMapping } from '../utils/fonts';
-import { createPreviewHtml } from '../pipeline/html';
 
 type AnyObj = Record<string, any>;
 
@@ -67,29 +66,16 @@ async function main() {
     await warmupChineseFontsMapping();
   } catch {}
 
-  const ir = compositionToIR(composition);
   const dir = path.join(process.cwd(), 'debug', 'logs');
   ensureCleanDir(dir);
   const p1 = path.join(dir, `01_figma_raw.json`);
-  const p2 = path.join(dir, `02_ir.json`);
   const p3 = path.join(dir, `03_render.html`);
   writeJson(p1, composition);
-  writeJson(p2, { nodes: ir.nodes, cssRules: ir.cssRules, renderUnion: ir.renderUnion, fontMeta: ir.fontMeta, assetMeta: ir.assetMeta });
-
-  const preview = await createPreviewHtml({
-    composition,
-    irNodes: ir.nodes,
-    cssRules: ir.cssRules,
-    renderUnion: ir.renderUnion,
-    googleFontsUrl: ir.fontMeta.googleFontsUrl,
-    chineseFontsUrls: ir.fontMeta.chineseFontsUrls || [],
-    debugEnabled: false,
-  });
-  const html = preview.html;
+  const result = await figmaToHtml({ composition }, { assetUrlProvider: (id, type) => (type === 'image' ? `/images/${id}.png` : `/svgs/${id}`), debugEnabled: false });
+  const html = result.html;
   writeHtml(p3, html);
   console.log('IR and HTML generated. Inspect files:');
   console.log(' - ' + p1);
-  console.log(' - ' + p2);
   console.log(' - ' + p3);
   console.log('\nOpen in browser: file://' + p3);
 }
