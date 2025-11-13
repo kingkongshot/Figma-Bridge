@@ -75,11 +75,14 @@ npm run dev
 
 ```
 Figma-Bridge/
-├── src/               # 服务端代码
-├── public/            # 浏览器预览界面
-├── ui.html            # Figma 插件 UI
-├── code.js            # Figma 插件逻辑
-└── locales/           # 国际化文件
+├── packages/bridge-pipeline/  # 独立的转换流水线包
+├── src/                       # 服务端代码和 CLI 工具
+├── public/                    # 浏览器预览界面
+├── code.js                    # Figma 插件逻辑
+├── ui.html                    # Figma 插件 UI
+├── debug/                     # 调试输出（BRIDGE_DEBUG=1 时）
+├── output/                    # 生成的 HTML/CSS
+└── docs/                      # 架构文档
 ```
 
 ## 开源协议

@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { FontCollector as BaseFontCollector, extractFontsFromComposition as baseExtractFontsFromComposition } from '@bridge/pipeline';
+import { FontCollector as BaseFontCollector, extractFontsFromComposition as baseExtractFontsFromComposition } from 'figma-html-bridge';
 
 const CHINESE_FONTS_INDEX_URL = 'https://raw.githubusercontent.com/KonghaYao/chinese-free-web-font-storage/branch/index.json';
 

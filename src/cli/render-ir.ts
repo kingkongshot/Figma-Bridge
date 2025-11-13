@@ -5,7 +5,7 @@
 
 import fs from 'fs';
 import path from 'path';
-import { figmaToHtml } from '@bridge/pipeline';
+import { figmaToHtml } from 'figma-html-bridge';
 import { warmupChineseFontsMapping } from '../utils/fonts';
 
 type AnyObj = Record<string, any>;

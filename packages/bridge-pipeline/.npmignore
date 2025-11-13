@@ -1,0 +1,29 @@
+# Source files (TypeScript sources are not needed, only compiled dist/)
+src/
+*.ts
+!*.d.ts
+
+# Config files
+tsconfig.json
+.eslintrc*
+.prettierrc*
+
+# Build artifacts
+*.tsbuildinfo
+
+# Tests
+*.test.js
+*.test.ts
+__tests__/
+test/
+tests/
+
+# Development
+.vscode/
+.idea/
+*.log
+node_modules/
+
+# Git
+.git/
+.gitignore

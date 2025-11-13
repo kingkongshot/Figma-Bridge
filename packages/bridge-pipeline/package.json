@@ -1,14 +1,38 @@
 {
-  "name": "@bridge/pipeline",
+  "name": "figma-html-bridge",
   "version": "0.1.0",
-  "description": "Figma Bridge rendering pipeline (IR -> HTML/CSS) and helpers",
+  "description": "Convert Figma designs to HTML/CSS via intermediate representation",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
-    "dist"
+    "dist",
+    "README.md",
+    "README.zh-CN.md",
+    "LICENSE"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kingkongshot/Figma-Bridge",
+    "directory": "packages/bridge-pipeline"
+  },
+  "homepage": "https://github.com/kingkongshot/Figma-Bridge#readme",
+  "bugs": {
+    "url": "https://github.com/kingkongshot/Figma-Bridge/issues"
+  },
+  "keywords": [
+    "figma",
+    "html",
+    "css",
+    "design-to-code",
+    "figma-to-html",
+    "figma-api",
+    "rendering-pipeline",
+    "intermediate-representation"
+  ],
+  "author": "kingkongshot",
+  "license": "MIT"
 }
 

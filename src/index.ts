@@ -5,7 +5,7 @@ import fs from 'fs';
 import { exec } from 'child_process';
 import { processBatch as processImageBatch, ensureUploadsDir, listMissing } from './imageService';
 import type { ImageItem } from './imageService';
-import { figmaToHtml, normalizeComposition, compositionToIR, normalizeHtml } from '@bridge/pipeline';
+import { figmaToHtml, normalizeComposition, compositionToIR, normalizeHtml } from 'figma-html-bridge';
 import { UPLOAD_DIR } from './imageService';
 import * as SvgService from './svgService';
 import { warmupChineseFontsMapping, extractFontsFromComposition } from './utils/fonts';

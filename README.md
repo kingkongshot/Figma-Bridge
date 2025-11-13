@@ -74,12 +74,14 @@ The generated HTML/CSS files are automatically saved to the `output/` directory 
 
 ```
 Figma-Bridge/
-├── src/               # Server-side code
-├── public/            # Browser preview interface
-├── ui.html            # Figma plugin UI
-├── code.js            # Figma plugin logic
-├── debug/             # Debug output (when BRIDGE_DEBUG=1)
-└── locales/           # Internationalization files
+├── packages/bridge-pipeline/  # Standalone conversion pipeline package
+├── src/                       # Server-side code and CLI tools
+├── public/                    # Browser preview interface
+├── code.js                    # Figma plugin logic
+├── ui.html                    # Figma plugin UI
+├── debug/                     # Debug output (when BRIDGE_DEBUG=1)
+├── output/                    # Generated HTML/CSS
+└── docs/                      # Architecture documentation
 ```
 
 ## License
