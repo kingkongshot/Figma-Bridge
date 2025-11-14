@@ -150,15 +150,6 @@
         });
       }
 
-      // SVG 导出等待器
-      let pendingSvgExportResolve = null;
-      async function requestExportMissingSvgs(nodeIds) {
-        return new Promise((resolve) => {
-          pendingSvgExportResolve = resolve;
-          parent.postMessage({ pluginMessage: { type: 'export-missing-svgs', nodeIds } }, '*');
-        });
-      }
-
       // Request Figma native render (ground truth)
       let pendingPreviewResolve = null;
       async function requestFigmaRender() {
@@ -206,95 +197,65 @@
                 // 请求插件导出缺失图片
                 const exportResult = await requestExportMissing(missing);
                 const items = Array.isArray(exportResult && exportResult.items) ? exportResult.items : [];
-                if (items.length > 0) {
-                  await fetch(server + '/api/images/batch', {
+                // 大批量时按块上传，避免超过服务器 25MB body 限制
+                function chunk(arr, size) {
+                  const out = [];
+                  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+                  return out;
+                }
+                for (const batch of chunk(items, 50)) {
+                  if (batch.length === 0) continue;
+                  const resp = await fetch(server + '/api/images/batch', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ items })
+                    body: JSON.stringify({ items: batch })
                   });
+                  if (!resp.ok) {
+                    console.warn('[UI] /api/images/batch failed with status', resp.status);
+                  }
                 }
               }
             }
             // ============ 2) SVG 缺失检查与增量上传 ============
             try {
-              // 收集 composition 中的 svgContent，计算稳定 svgId（FNV-1a + sanitize）
-              function fnv1a(str) {
-                let h = 2166136261 >>> 0;
-                for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
-                return h.toString(36);
-              }
-              function sanitizeId(raw) { return String(raw || '').replace(/[^a-zA-Z0-9_-]/g, '_'); }
-              const svgNodes = [];
-              function walk(n) {
+              // 收集插件侧已导出的 SVG 数据（svgId 已在插件侧通过 FNV-1a 计算完毕）
+              // UI 侧只负责：检查缺失 → 上传 → 清理临时字段
+              const svgItems = [];
+              (function walk(n) {
                 if (!n || n.visible === false) return;
-                if (typeof n.svgContent === 'string' && n.svgContent) {
-                  const svgId = sanitizeId(fnv1a(n.svgContent));
-                  console.log(`[UI] Found SVG node ${n.id}: svgId=${svgId}, content length=${n.svgContent.length}`);
-                  svgNodes.push({ nodeId: n.id, svgId });
-                } else if (n.type && ['VECTOR', 'POLYGON', 'STAR', 'ELLIPSE'].includes(n.type)) {
-                  console.warn(`[UI] Vector node ${n.id} (${n.type}) has no svgContent!`);
+                if (typeof n._svgContent === 'string' && typeof n.svgId === 'string' && n._svgContent) {
+                  svgItems.push({ id: n.svgId, data: n._svgContent });
                 }
                 if (Array.isArray(n.children)) n.children.forEach(walk);
-              }
-              (Array.isArray(comp.children) ? comp.children : []).forEach(walk);
-              const svgIds = Array.from(new Set(svgNodes.map(x => x.svgId)));
-              console.log(`[UI] Collected ${svgNodes.length} SVG nodes, ${svgIds.length} unique IDs`);
+              })({ children: comp.children });
+              const svgIds = Array.from(new Set(svgItems.map(x => x.id)));
               if (svgIds.length > 0) {
-                // 向服务器查询缺失 SVG
+                const checkResp = await fetch(server + '/api/svgs/check', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: svgIds }) });
                 let missingSvgIds = svgIds;
-                try {
-                  console.log(`[UI] Checking ${svgIds.length} SVG IDs with server...`);
-                  const r = await fetch(server + '/api/svgs/check', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: svgIds })
-                  });
-                  if (r.ok) {
-                    const data = await r.json();
-                    missingSvgIds = Array.isArray(data && data.missing) ? data.missing : [];
-                    console.log(`[UI] Server reports ${missingSvgIds.length} missing SVGs:`, missingSvgIds);
-                  } else {
-                    console.error(`[UI] SVG check failed: ${r.status}`);
-                  }
-                } catch (e) { 
-                  console.error('[UI] SVG check error:', e);
-                  missingSvgIds = svgIds; 
+                if (checkResp.ok) {
+                  const data = await checkResp.json();
+                  missingSvgIds = Array.isArray(data && data.missing) ? data.missing : [];
                 }
-
                 if (missingSvgIds.length > 0) {
-                  // 选择需要导出的节点 id（nodeId 与 svgId 的映射在 svgNodes）
-                  const exportNodeIds = svgNodes.filter(x => missingSvgIds.includes(x.svgId)).map(x => x.nodeId);
-                  console.log(`[UI] Requesting export for ${exportNodeIds.length} nodes:`, exportNodeIds);
-                  const exportResult = await requestExportMissingSvgs(exportNodeIds);
-                  const items = Array.isArray(exportResult && exportResult.items) ? exportResult.items : [];
-                  console.log(`[UI] Received ${items.length} exported SVG items`);
-                  if (items.length > 0) {
-                    console.log('[UI] Uploading SVGs to server...');
-                    const uploadResp = await fetch(server + '/api/svgs/batch', {
-                      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items })
-                    });
-                    if (uploadResp.ok) {
-                      const uploadData = await uploadResp.json();
-                      console.log('[UI] SVG upload result:', uploadData);
-                    } else {
-                      console.error(`[UI] SVG upload failed: ${uploadResp.status}`);
+                  const toUpload = svgItems.filter(x => missingSvgIds.includes(x.id));
+                  if (toUpload.length > 0) {
+                    const uploadResp = await fetch(server + '/api/svgs/batch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items: toUpload }) });
+                    if (!uploadResp.ok) {
+                      console.error('[UI] svgs.batch failed:', uploadResp.status);
                     }
                   }
-                } else {
-                  console.log('[UI] All SVGs already exist on server');
                 }
-
-                // 用 svgId 替换 svgContent
-                function rewrite(n) {
-                  if (!n || n.visible === false) return;
-                  if (typeof n.svgContent === 'string' && n.svgContent) {
-                    const svgId = sanitizeId(fnv1a(n.svgContent));
-                    n.svgId = svgId; delete n.svgContent;
-                  }
-                  if (Array.isArray(n.children)) n.children.forEach(rewrite);
-                }
-                (Array.isArray(comp.children) ? comp.children : []).forEach(rewrite);
               }
+              // 清理临时 SVG 内容，随后直接发送 comp
+              function cleanupSvgContent(n) {
+                if (!n || typeof n !== 'object') return;
+                delete n._svgContent;
+                delete n.svgContent;
+                if (Array.isArray(n.children)) n.children.forEach(cleanupSvgContent);
+              }
+              cleanupSvgContent({ children: comp.children });
             } catch (e) {
-              console.warn('[UI] SVG incremental upload failed or skipped:', e);
+              console.warn('[UI] SVG upload/cleanup skipped:', e);
             }
             // Get Figma render first (for comparison)
             let figmaRender = null;
@@ -329,11 +290,6 @@
           if (typeof pendingExportResolve === 'function') {
             pendingExportResolve({ items: Array.isArray(msg.items) ? msg.items : [] });
             pendingExportResolve = null;
-          }
-        } else if (msg.type === 'export-missing-svgs:result') {
-          if (typeof pendingSvgExportResolve === 'function') {
-            pendingSvgExportResolve({ items: Array.isArray(msg.items) ? msg.items : [] });
-            pendingSvgExportResolve = null;
           }
         } else if (msg.type === 'export-figma-render:result') {
           if (typeof pendingPreviewResolve === 'function') {

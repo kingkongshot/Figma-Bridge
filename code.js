@@ -6,6 +6,20 @@ function sanitizeImageId(hash) {
   return cleaned || null;
 }
 
+// SVG hash utilities (single source of truth)
+function fnv1a(str) {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  return h.toString(36);
+}
+
+function sanitizeSvgId(raw) {
+  return String(raw || '').replace(/[^a-zA-Z0-9_-]/g, '_');
+}
+
 const IGNORED_TYPES = [
   'VECTOR', 'BOOLEAN_OPERATION', 'STAR', 'POLYGON', 'LINE',
   'REGULAR_POLYGON', 'ELLIPSE', 'ARROW', 'TRIANGLE'
@@ -482,7 +496,7 @@ async function collectNode(n, opts) {
     if (textData) entry.text = textData;
   }
 
-  if (!entry.svgContent && VECTOR_TYPES.includes(n.type) && typeof n.exportAsync === 'function') {
+  if (!entry.svgId && !entry._svgContent && VECTOR_TYPES.includes(n.type) && typeof n.exportAsync === 'function') {
     // Decide if this vector should export as SVG. For ELLIPSE with dashed + INSIDE/OUTSIDE
     // we skip SVG so downstream stroke pipeline can render true INSIDE/OUTSIDE.
     let allowSvg = true;
@@ -507,7 +521,9 @@ async function collectNode(n, opts) {
       try {
         const svgString = await n.exportAsync({ format: 'SVG_STRING', svgOutlineText: true, svgSimplifyStroke: true });
         if (svgString && typeof svgString === 'string') {
-          entry.svgContent = svgString;
+          const svgId = sanitizeSvgId(fnv1a(svgString));
+          entry.svgId = svgId;                  // 稳定 ID，用于服务端引用 /svgs/{svgId}
+          entry._svgContent = svgString;        // 临时字段，仅供 UI 侧上传，渲染前会被清理
         } else {
           console.warn(`[SVG] Export returned non-string for ${n.type} node ${n.id}:`, typeof svgString);
         }
@@ -533,7 +549,7 @@ async function collectNode(n, opts) {
       };
     }
   } else {
-    if (entry.svgContent && n.absoluteRenderBounds && typeof rootOffsetX === 'number' && typeof rootOffsetY === 'number') {
+    if ((entry.svgId || entry._svgContent) && n.absoluteRenderBounds && typeof rootOffsetX === 'number' && typeof rootOffsetY === 'number') {
       const rb = n.absoluteRenderBounds;
       entry.renderBounds = { x: rb.x - rootOffsetX, y: rb.y - rootOffsetY, width: rb.width, height: rb.height };
     }
@@ -546,7 +562,7 @@ async function collectNode(n, opts) {
 
   const kids = Array.isArray(n.children) ? n.children : [];
   const selfIsAutoLayout = !!(containerProps && containerProps.layoutMode && containerProps.layoutMode !== 'NONE');
-  if (kids.length && !entry.svgContent) {
+  if (kids.length && !(entry.svgId || entry._svgContent)) {
     const childPromises = kids.map(k => collectNode(k, { isTopLevel: false, parentIsAutoLayout: selfIsAutoLayout, rootOffsetX, rootOffsetY }));
     const collected = (await Promise.all(childPromises)).filter(Boolean);
     if (collected.length) entry.children = collected;
@@ -652,55 +668,6 @@ figma.ui.onmessage = async (msg) => {
   if (msg.type === 'close') {
     figma.closePlugin();
     return;
-  }
-  if (msg.type === 'export-missing-svgs') {
-    try {
-      const nodeIds = Array.isArray(msg.nodeIds) ? msg.nodeIds : [];
-      console.log(`[export-missing-svgs] Received request for ${nodeIds.length} nodes:`, nodeIds);
-      if (nodeIds.length === 0) {
-        // @ts-ignore
-        figma.ui.postMessage({ type: 'export-missing-svgs:result', items: [] });
-        return;
-      }
-      const items = [];
-      function fnv1a(str) {
-        let h = 2166136261 >>> 0;
-        for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
-        return h.toString(36);
-      }
-      function sanitizeId(raw) { return String(raw || '').replace(/[^a-zA-Z0-9_-]/g, '_'); }
-
-      const batchSize = 6;
-      for (let i = 0; i < nodeIds.length; i += batchSize) {
-        const batch = nodeIds.slice(i, i + batchSize);
-        const results = await Promise.all(batch.map(async (nid) => {
-          try {
-            const n = await figma.getNodeByIdAsync(nid);
-            if (!n) {
-              console.warn(`[export-missing-svgs] Node ${nid} not found`);
-              return null;
-            }
-            if (typeof n.exportAsync !== 'function') {
-              console.warn(`[export-missing-svgs] Node ${nid} has no exportAsync`);
-              return null;
-            }
-            const text = await n.exportAsync({ format: 'SVG_STRING', svgOutlineText: true, svgSimplifyStroke: true });
-            const id = sanitizeId(fnv1a(text));
-            console.log(`[export-missing-svgs] Exported node ${nid}: id=${id}, length=${text.length}`);
-            return { id, data: text };
-          } catch (e) { 
-            console.error(`[export-missing-svgs] Failed to export node ${nid}:`, e);
-            return null; 
-          }
-        }));
-        results.forEach(r => { if (r && r.id && r.data) items.push(r); });
-      }
-      console.log(`[export-missing-svgs] Returning ${items.length} items`);
-      figma.ui.postMessage({ type: 'export-missing-svgs:result', items });
-    } catch (e) {
-      console.error('[export-missing-svgs] Top-level error:', e);
-      figma.ui.postMessage({ type: 'export-missing-svgs:result', items: [] });
-    }
   }
   if (msg.type === 'export-missing-images') {
     try {
