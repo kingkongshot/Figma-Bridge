@@ -388,8 +388,14 @@ function renderSingleBox(cfg: RenderBoxConfig): string {
   const { className, id, layout, boxCss, innerContent } = cfg;
   const opts = cfg.options;
   const t = layout.transform2x2;
-  const cssSeg = layoutToCss(layout);
   const cleaned = cleanBoxCssForSingleBox(boxCss);
+
+  // Why: respect textAutoResize: auto width/height should not be constrained to renderBounds
+  const adjustedLayout = { ...layout };
+  if (cleaned.hasAutoWidth) adjustedLayout.width = 'auto' as any;
+  if (cleaned.hasAutoHeight) adjustedLayout.height = 'auto' as any;
+
+  const cssSeg = layoutToCss(adjustedLayout);
   const isIdentity = t.a === 1 && t.b === 0 && t.c === 0 && t.d === 1;
   const transformPart = isIdentity ? '' : cssSeg.transformCss;
   const posPart = opts?.omitPosition ? '' : cssSeg.positioningCss;
@@ -510,7 +516,11 @@ async function renderFrameNode(ctx: RenderContext): Promise<string> {
 
 async function renderTextNode(ctx: RenderContext): Promise<string> {
   if (!ctx.irNode) throw new Error('renderTextNode: irNode missing');
-  const textHtml = ctx.mode === 'debug' ? '' : (ctx.irNode.content.type === 'text' ? ctx.irNode.content.html : '');
+  // Why: keep text content in debug mode for accurate flexbox sizing, but make it invisible
+  const rawTextHtml = (ctx.irNode.content.type === 'text' ? ctx.irNode.content.html : '');
+  const textHtml = ctx.mode === 'debug'
+    ? (rawTextHtml ? `<span style="visibility:hidden;">${rawTextHtml}</span>` : '')
+    : rawTextHtml;
   let boxCss = ctx.mode === 'debug' ? extractLayoutCssForDebug(ctx.irNode.style.boxCss) : ctx.irNode.style.boxCss;
   const cssCtx = {
     position: ctx.irNode.layout.position,
@@ -524,13 +534,18 @@ async function renderTextNode(ctx: RenderContext): Promise<string> {
   if (ctx.mode === 'content') {
     const util = await layoutToTailwindClasses(ctx.irNode.layout, boxCss || '');
     if (util.classNames.length) utilClassesT.push(...util.classNames);
+
+    // Why: respect textAutoResize: skip width/height classes when text uses auto sizing
+    const hasAutoWidth = /width\s*:\s*auto\s*(;|$)/i.test(boxCss || '');
+    const hasAutoHeight = /height\s*:\s*auto\s*(;|$)/i.test(boxCss || '');
+
     const w = ctx.irNode.layout.width; const h = ctx.irNode.layout.height;
-    if (typeof w === 'number' && shouldUseWidthClass(w, ctx.sizeFreq)) {
+    if (typeof w === 'number' && !hasAutoWidth && shouldUseWidthClass(w, ctx.sizeFreq)) {
       const cw = `w-[${Math.round(w*100)/100}px]`;
       utilClassesT.push(cw);
       if (ctx.usedClasses) ctx.usedClasses.add(cw);
     }
-    if (typeof h === 'number' && shouldUseHeightClass(h, ctx.sizeFreq)) {
+    if (typeof h === 'number' && !hasAutoHeight && shouldUseHeightClass(h, ctx.sizeFreq)) {
       const ch = `h-[${Math.round(h*100)/100}px]`;
       utilClassesT.push(ch);
       if (ctx.usedClasses) ctx.usedClasses.add(ch);
