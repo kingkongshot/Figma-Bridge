@@ -1,6 +1,6 @@
 {
   "name": "figma-html-bridge",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Convert Figma designs to HTML/CSS via intermediate representation",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
