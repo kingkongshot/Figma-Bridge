@@ -1,0 +1,32 @@
+/* DSL Compare View */
+
+.dsl-compare {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  height: 100%;
+  gap: 1px;
+  background: var(--border);
+}
+
+.dsl-pane {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.dsl-content {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+
+.dsl-content iframe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: white;
+}

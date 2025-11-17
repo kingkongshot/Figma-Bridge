@@ -93,6 +93,7 @@
     <link rel="stylesheet" href="/styles/properties.css" />
     <link rel="stylesheet" href="/styles/preview.css" />
     <link rel="stylesheet" href="/styles/settings.css" />
+    <link rel="stylesheet" href="/styles/dsl.css" />
     <link rel="stylesheet" href="/libs/styles/github-dark.min.css" id="highlightTheme" />
   </head>
   <body>
@@ -103,6 +104,9 @@
         </button>
         <button class="activity-btn" id="filesBtn" title="Files" data-i18n="sidebar.files">
           <img src="/icons/file-html.svg" alt="Files">
+        </button>
+        <button class="activity-btn hidden" id="dslBtn" title="DSL Compare" data-i18n="sidebar.dsl">
+          <img src="/icons/robot.svg" alt="DSL">
         </button>
         <button class="activity-btn" id="activitySettingsBtn" title="Settings" data-i18n="sidebar.settings">
           <img src="/icons/gear.svg" alt="Settings">
@@ -135,6 +139,19 @@
           <div class="content">
             <div class="file-tree" id="fileTree">
               <div class="empty" data-i18n="files.loading">Loading files...</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="view-panel hidden" id="dslSidebarView" data-view="dsl">
+          <div class="sidebar-header">
+            <button class="sidebar-collapse-btn" title="Collapse Sidebar" data-i18n="sidebar.collapse">
+              <img src="/icons/sidebar.svg" alt="Collapse Sidebar">
+            </button>
+          </div>
+          <div class="content">
+            <div class="file-tree" id="dslFileTree">
+              <div class="empty" data-i18n="dsl.loading">Loading DSL files...</div>
             </div>
           </div>
         </div>
@@ -196,7 +213,22 @@
             <pre class="code-content"><code class="language-html" id="codeContent" data-i18n="code.selectFile">Select a file to view its content</code></pre>
           </div>
         </div>
-        
+
+        <div class="content-panel hidden" id="dslContentView" data-view="dsl">
+          <div class="dsl-compare">
+            <div class="dsl-pane dsl-left">
+              <div class="dsl-content">
+                <iframe id="dslDirectFrame" title="DSL Direct Render" sandbox="allow-same-origin allow-scripts"></iframe>
+              </div>
+            </div>
+            <div class="dsl-pane dsl-right">
+              <div class="dsl-content">
+                <iframe id="dslPipelineFrame" title="DSL Pipeline Render" sandbox="allow-same-origin allow-scripts"></iframe>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div class="content-panel hidden" id="settingsContentView" data-view="settings">
           <div class="settings-content-scroll" id="settingsContentScroll">
             <div class="settings-section" id="aboutSection" data-section="about">

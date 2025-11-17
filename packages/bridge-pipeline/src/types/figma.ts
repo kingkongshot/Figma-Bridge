@@ -134,7 +134,8 @@ export interface FigmaNode {
 }
 
 export interface CompositionInput {
+  kind?: 'composition' | string;
+  bounds?: FigmaRect;
   absOrigin: { x: number; y: number };
   children: FigmaNode[];
 }
-

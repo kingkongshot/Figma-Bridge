@@ -29,6 +29,10 @@ body.dark .activity-bar {
   transition: background 0.2s ease;
 }
 
+.activity-btn.hidden {
+  display: none;
+}
+
 .activity-btn:hover {
   background: rgba(0, 0, 0, 0.05);
 }

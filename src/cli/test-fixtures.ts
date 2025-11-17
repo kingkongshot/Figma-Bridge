@@ -6,7 +6,7 @@
  Optional meta.json: { thresholdPercent?: number, maxSizeDeltaPercent?: number, notes?: string }
 
  Usage:
-  npm run test-fixtures -- [--fixtures fixtures] [--pattern name-substring] [--threshold 2.5] [--size-tolerance-percent 2.5] [--server http://localhost:7788] [--timeout-ms 15000]
+  npm run test-fixtures -- [--fixtures fixtures/figma] [--pattern name-substring] [--threshold 2.5] [--size-tolerance-percent 2.5] [--server http://localhost:7788] [--timeout-ms 15000]
 
  Preconditions:
    - Backend running with BRIDGE_DEBUG=1 (so html-render.png is written)
@@ -70,7 +70,7 @@ type CaseResult = {
 };
 
 function parseArgs(argv: string[]): CliArgs {
-  let fixtures = 'fixtures';
+  let fixtures = 'fixtures/figma';
   let pattern: string | null = null;
   let thresholdPercent = 3.0;
   let maxSizeDeltaPercent = 2.5;
@@ -315,7 +315,8 @@ async function runCase(f: FixtureCase, args: CliArgs, outRoot: string): Promise<
 async function main() {
   const args = parseArgs(process.argv);
   const fixturesRoot = path.isAbsolute(args.fixtures) ? args.fixtures : path.join(process.cwd(), args.fixtures);
-  const outRoot = path.join(process.cwd(), 'debug', 'fixtures');
+  const fixtureType = path.basename(args.fixtures);
+  const outRoot = path.join(process.cwd(), 'debug', 'fixtures', fixtureType);
   ensureDir(outRoot);
 
   const dirs = listFixtureDirs(fixturesRoot).filter((d) => args.pattern ? path.basename(d).includes(args.pattern!) : true);

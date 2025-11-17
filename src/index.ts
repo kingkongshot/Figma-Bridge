@@ -115,6 +115,12 @@ app.get('/health', (_req, res) => {
   res.status(200).send('ok');
 });
 
+app.get('/api/config', (_req, res) => {
+  res.json({
+    debugMode: DEBUG_ENABLED
+  });
+});
+
 function ensureDebugDir() {
   if (!DEBUG_ENABLED) return;
   fs.rmSync(DEBUG_LATEST, { recursive: true, force: true });
@@ -722,6 +728,57 @@ app.get('/api/languages/:code', (req, res) => {
     const raw = fs.readFileSync(file, 'utf8');
     const obj = JSON.parse(raw);
     res.json(obj);
+  } catch (e: any) {
+    res.status(500).json({ error: String(e?.message || e) });
+  }
+});
+
+app.get('/api/dsl/files', (_req, res) => {
+  try {
+    const dslDir = path.join(process.cwd(), 'fixtures', 'dsl');
+    if (!fs.existsSync(dslDir)) {
+      return res.json([]);
+    }
+    const entries = fs.readdirSync(dslDir, { withFileTypes: true });
+    const files = entries
+      .filter(e => e.isFile() && e.name.endsWith('.html'))
+      .map(e => ({
+        name: e.name,
+        path: `dsl/${e.name}`
+      }));
+    res.json(files);
+  } catch (e: any) {
+    res.status(500).json({ error: String(e?.message || e) });
+  }
+});
+
+app.get('/api/dsl/:filename', (req, res) => {
+  try {
+    const filename = path.basename(req.params.filename);
+    if (!filename.endsWith('.html')) {
+      return res.status(400).json({ error: 'Only HTML files allowed' });
+    }
+    const dslDir = path.join(process.cwd(), 'fixtures', 'dsl');
+    const filePath = path.join(dslDir, filename);
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: 'File not found' });
+    }
+    const content = fs.readFileSync(filePath, 'utf8');
+    res.json({ content, filename });
+  } catch (e: any) {
+    res.status(500).json({ error: String(e?.message || e) });
+  }
+});
+
+app.post('/api/dsl/composition', async (req, res) => {
+  try {
+    const { html } = req.body;
+    if (!html || typeof html !== 'string') {
+      return res.status(400).json({ error: 'HTML content required' });
+    }
+    const { dslHtmlToComposition } = require('figma-html-bridge');
+    const composition = dslHtmlToComposition(html);
+    res.json({ composition });
   } catch (e: any) {
     res.status(500).json({ error: String(e?.message || e) });
   }

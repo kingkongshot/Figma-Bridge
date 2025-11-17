@@ -33,6 +33,12 @@
     "intermediate-representation"
   ],
   "author": "kingkongshot",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "cheerio": "^1.1.2"
+  },
+  "devDependencies": {
+    "@types/cheerio": "^0.22.35"
+  }
 }
 
