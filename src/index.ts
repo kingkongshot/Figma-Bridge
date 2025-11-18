@@ -80,6 +80,8 @@ type PreviewData = {
   debugCss: string;
   baseWidth: number;
   baseHeight: number;
+  // Optional: alternative HTML used for DSL compare views (no extra viewport padding).
+  compareHtml?: string;
 };
 type PreviewState = PreviewData | null;
 
@@ -106,6 +108,7 @@ class PreviewManager {
       debugCss: preview.debugCss,
       baseWidth: preview.baseWidth,
       baseHeight: preview.baseHeight,
+      compareHtml: preview.compareHtml,
     });
   }
 }
@@ -229,6 +232,74 @@ function rewriteUploadsToImages(html: string): string {
   return html.replace(/\/uploads\/([a-zA-Z0-9_-]+)\.png/g, 'images/$1.png');
 }
 
+type Bounds = { width: number; height: number };
+type Rect = { x: number; y: number; width: number; height: number };
+
+function buildViewportWrapper(
+  contentHtml: string,
+  bounds: Bounds,
+  renderUnion: Rect,
+  padding: number,
+  headLinks: string
+): { html: string; viewportWidth: number; viewportHeight: number } {
+  const minX = Math.min(0, renderUnion.x) - padding;
+  const minY = Math.min(0, renderUnion.y) - padding;
+  const maxX = Math.max(bounds.width, renderUnion.x + renderUnion.width) + padding;
+  const maxY = Math.max(bounds.height, renderUnion.y + renderUnion.height) + padding;
+  const viewportWidth = Math.ceil(maxX - minX);
+  const viewportHeight = Math.ceil(maxY - minY);
+
+  const viewportStyles = `
+.viewport {
+  position: relative;
+  width: ${viewportWidth}px;
+  min-height: max(${viewportHeight}px, 100vh);
+  background: transparent;
+  box-sizing: border-box;
+  transform-origin: top left;
+}
+.view-offset {
+  position: absolute;
+  left: ${-minX}px;
+  top: ${-minY}px;
+  width: 100%;
+  min-height: 100%;
+  background: transparent;
+  box-sizing: border-box;
+}
+.composition {
+  position: relative;
+  left: 0;
+  top: 0;
+  width: ${bounds.width}px;
+  min-height: max(${bounds.height}px, 100vh);
+  background: transparent;
+  box-sizing: border-box;
+}`;
+
+  const html = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Bridge Preview</title>
+${headLinks}    <base href="/">
+    <link rel="stylesheet" href="/preview/styles.css"/>
+    <style>${viewportStyles}</style>
+  </head>
+  <body>
+    <div class="viewport">
+      <div class="view-offset">
+        <div class="composition" data-figma-render="1">
+${contentHtml}
+        </div>
+      </div>
+    </div>
+  </body>
+</html>`;
+
+  return { html, viewportWidth, viewportHeight };
+}
+
 function writeOutputPackage(bodyHtml: string, cssText: string, headLinks: string, imageIds: string[], svgFiles: string[], baseWidth: number, baseHeight: number) {
   try {
     ensureOutputDir();
@@ -273,6 +344,8 @@ function writeOutputPackage(bodyHtml: string, cssText: string, headLinks: string
       background: #f0f0f0;
     }
     .viewport {
+      width: ${baseWidth}px;
+      min-height: ${baseHeight}px;
       transform-origin: top center;
     }`;
 
@@ -293,7 +366,9 @@ function writeOutputPackage(bodyHtml: string, cssText: string, headLinks: string
       window.addEventListener('resize', fit);
     });`;
 
-    let rawHtmlDoc = `<!doctype html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"utf-8\" />\n    <title>Exported Content</title>\n${headLinks}    <link rel=\"stylesheet\" href=\"styles.css\"/>\n    <style>${viewportStyles}</style>\n  </head>\n  <body>\n${bodyHtml}\n    <script>${viewportScript}</script>\n  </body>\n</html>`;
+    const wrappedBody = `<div class=\"viewport\">\n${bodyHtml}\n    </div>`;
+
+    let rawHtmlDoc = `<!doctype html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"utf-8\" />\n    <title>Exported Content</title>\n${headLinks}    <link rel=\"stylesheet\" href=\"styles.css\"/>\n    <style>${viewportStyles}</style>\n  </head>\n  <body>\n${wrappedBody}\n    <script>${viewportScript}</script>\n  </body>\n</html>`;
     try {
       const post = normalizeHtml(rawHtmlDoc);
       if (post && post.html) rawHtmlDoc = post.html;
@@ -325,6 +400,7 @@ app.get('/events', (req, res) => {
     latestDebugCss: cur.debugCss,
     latestBaseWidth: cur.baseWidth,
     latestBaseHeight: cur.baseHeight,
+    latestCompareHtml: cur.compareHtml,
   } : {};
   res.write(`data: ${JSON.stringify(snap)}\n\n`);
 
@@ -520,6 +596,7 @@ app.post('/api/composition', async (req, res) => {
   let renderRes: { html: string; baseWidth: number; baseHeight: number; renderUnion: any; debugHtml: string; debugCss: string };
   let lastResult: any;
   let irResult: { nodes: any[] } | null = null;
+  let compareHtml: string | undefined;
   // Fonts: compute once and reuse for preview + export
   let googleFontsUrl: string | null = null;
   let chineseFontsUrls: string[] = [];
@@ -556,8 +633,26 @@ app.post('/api/composition', async (req, res) => {
       // ignore preview styles write failure
     }
     const headLinks = buildHeadFontLinks(googleFontsUrl, chineseFontsUrls);
-    const htmlWithFonts = injectHeadLinks(result.html, headLinks);
-    renderRes = { html: htmlWithFonts, baseWidth: result.baseWidth, baseHeight: result.baseHeight, renderUnion: result.renderUnion, debugHtml: result.debugHtml, debugCss: result.debugCss };
+
+    // Host-level viewport/composition wrappers: core pipeline now returns content-only HTML.
+    const bounds = composition.bounds;
+    const renderUnion = result.renderUnion;
+
+    // Preview viewport (with 4px padding for debug overlay)
+    const previewWrapper = buildViewportWrapper(result.html, bounds, renderUnion, 4, headLinks);
+
+    // Compare viewport (no padding for pixel-perfect comparison)
+    const compareWrapper = buildViewportWrapper(result.html, bounds, renderUnion, 0, headLinks);
+    compareHtml = compareWrapper.html;
+
+    renderRes = {
+      html: previewWrapper.html,
+      baseWidth: previewWrapper.viewportWidth,
+      baseHeight: previewWrapper.viewportHeight,
+      renderUnion: result.renderUnion,
+      debugHtml: result.debugHtml,
+      debugCss: result.debugCss
+    };
     if (DEBUG_ENABLED) {
       try {
         if (renderRes.html) writeDebugHtml('render.before', renderRes.html);
@@ -596,6 +691,7 @@ app.post('/api/composition', async (req, res) => {
     debugCss: renderRes.debugCss,
     baseWidth: renderRes.baseWidth,
     baseHeight: renderRes.baseHeight,
+    compareHtml,
   });
   res.status(204).end();
 });

@@ -4,8 +4,6 @@
   display: grid;
   grid-template-columns: 1fr 1fr;
   height: 100%;
-  gap: 1px;
-  background: var(--border);
 }
 
 .dsl-pane {

@@ -58,6 +58,12 @@ function computeViewport(bounds: Bounds, union: Rect, padding: number = 4) {
   return { viewWidth, viewHeight, minXView, minYView };
 }
 
+function buildContentLayer(shapeHtml: string[], contentLayerStyle?: string): string {
+  return `<div class="content-layer"${contentLayerStyle ? ` style="${contentLayerStyle}"` : ''}>
+${shapeHtml.join('\n')}
+</div>`;
+}
+
 // Why: trim float noise (e.g. 596.000244px)
 function fmtPx(n: number): string {
   if (!isFinite(n)) return '0px';
@@ -863,17 +869,23 @@ export async function createPreviewHtml(
   );
 
   
-  const contentBounds = { width: Math.ceil(renderUnion.width), height: Math.ceil(renderUnion.height) };
   const overlayStr = debugEnabled ? debugHtml.join('\n') : '';
-  
+
+  const baseStyles = buildBaseStyles();
   const utilityCss = buildUtilityCssSelective(usedClasses);
-  const html = wrapInDocument({
-    bodyHtml: shapeHtml.join('\n'),
-    viewport,
-    bounds: contentBounds,
-    styles: { cssRules: `${cssRules || ''}\n${sharedCss}`, utilityCss },
-    contentLayerStyle,
-  });
+  const stylesText = `${baseStyles}\n${utilityCss}\n${cssRules || ''}\n${sharedCss}`;
+  const contentHtml = buildContentLayer(shapeHtml, contentLayerStyle);
+  const html = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Bridge Preview</title>
+    <style>${stylesText}</style>
+  </head>
+  <body>
+${contentHtml}
+  </body>
+</html>`;
   const debugCss = buildDebugStyles();
   return { html, baseWidth: viewport.width, baseHeight: viewport.height, renderUnion, debugHtml: overlayStr, debugCss };
 }
@@ -893,16 +905,14 @@ export async function createPreviewAssets(
   );
   const overlayStr = debugEnabled ? debugHtml.join('\n') : '';
 
-  const baseStyles = buildBaseStyles(viewport, bounds);
+  const baseStyles = buildBaseStyles();
   const utilityCss = buildUtilityCssSelective(usedClasses);
   const cssText = `${baseStyles}\n${utilityCss}\n${cssRules || ''}\n${sharedCss}`;
-  const baseTag = `    <base href=\"/\">\n`;
-
-  const rawHtmlDoc = `<!doctype html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"utf-8\" />\n    <title>Bridge Preview</title>\n${baseTag}    <link rel=\"stylesheet\" href=\"/preview/styles.css\"/>\n  </head>\n  <body>\n    <div class=\"viewport\">\n      <div class=\"view-offset\">\n        <div class=\"composition\" data-figma-render=\"1\">\n          <div class=\"content-layer\"${contentLayerStyle ? ` style=\\\"${contentLayerStyle}\\\"` : ''}>\n${shapeHtml.join('\n')}\n          </div>\n        </div>\n      </div>\n    </div>\n  </body>\n</html>`;
+  const htmlFragment = buildContentLayer(shapeHtml, contentLayerStyle);
 
   const debugCss = buildDebugStyles();
   // Keep raw HTML; host app may format or minify as needed
-  return { html: rawHtmlDoc, cssText, baseWidth: viewport.width, baseHeight: viewport.height, renderUnion, debugHtml: overlayStr, debugCss };
+  return { html: htmlFragment, cssText, baseWidth: viewport.width, baseHeight: viewport.height, renderUnion, debugHtml: overlayStr, debugCss };
 }
 
 // Internal: used by figmaToHtml for export path; signature may change without notice
@@ -919,19 +929,9 @@ export async function createContentAssets(
     false  // debugEnabled: always false for export
   );
 
-  // Build viewport structure (same as preview)
-  const contentLayerHtml = `          <div class=\"content-layer\"${contentLayerStyle ? ` style=\"${contentLayerStyle}\"` : ''}>
-${shapeHtml.join('\n')}
-          </div>`;
-  const bodyHtml = `    <div class=\"viewport\">
-      <div class=\"view-offset\">
-        <div class=\"composition\" data-figma-render=\"1\">
-${contentLayerHtml}
-        </div>
-      </div>
-    </div>`;
+  const bodyHtml = buildContentLayer(shapeHtml, contentLayerStyle);
 
-  const baseStyles = buildBaseStyles(viewport, bounds);
+  const baseStyles = buildBaseStyles();
   const utilityCss = buildUtilityCssSelective(usedClasses);
   const cssText = `${baseStyles}\n${utilityCss}\n${cssRules || ''}\n${sharedCss}`;
   const headLinks = '';

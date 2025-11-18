@@ -55,6 +55,7 @@ const sidebarToggleBtn = document.getElementById('sidebarToggle');
 
 const state = {
         html: null,
+        compareHtml: null,
         debugHtml: null,
         debugCss: null,
         baseWidth: null,
@@ -171,7 +172,8 @@ function update(changes = {}) {
           previewFrame.addEventListener('load', onLoad);
 
           if (state.currentView === 'dsl' && dslPipelineFrame) {
-            dslPipelineFrame.setAttribute('srcdoc', state.html);
+            const pipelineHtml = state.compareHtml || state.html;
+            dslPipelineFrame.setAttribute('srcdoc', pipelineHtml);
           }
         }
   if (changes.ir) {
@@ -197,13 +199,14 @@ function update(changes = {}) {
 
 function mergePayloadIntoState(payload, keyPrefix = '') {
   const changes = {};
-  const keys = keyPrefix 
-    ? ['html', 'debugHtml', 'debugCss', 'composition', 'ir', 'baseWidth', 'baseHeight'].map(k => keyPrefix + k.charAt(0).toUpperCase() + k.slice(1)) 
-    : ['html', 'debugHtml', 'debugCss', 'composition', 'ir', 'baseWidth', 'baseHeight'];
-  
+  const baseKeys = ['html', 'compareHtml', 'debugHtml', 'debugCss', 'composition', 'ir', 'baseWidth', 'baseHeight'];
+  const keys = keyPrefix
+    ? baseKeys.map(k => keyPrefix + k.charAt(0).toUpperCase() + k.slice(1))
+    : baseKeys;
+
   keys.forEach((key, i) => {
-    const targetKey = ['html', 'debugHtml', 'debugCss', 'composition', 'ir', 'baseWidth', 'baseHeight'][i];
-    if (payload[key]) changes[targetKey] = payload[key];
+    const targetKey = baseKeys[i];
+    if (payload[key] !== undefined) changes[targetKey] = payload[key];
   });
   
   return changes;
