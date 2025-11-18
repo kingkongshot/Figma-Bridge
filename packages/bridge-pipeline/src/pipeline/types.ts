@@ -17,13 +17,19 @@ export type LayoutInfo = {
   left?: number;
   top?: number;
 
+  // Flex item semantics
   flexGrow?: number;
   flexShrink?: number;
   flexBasis?: number | 'auto';
   alignSelf?: 'auto' | 'flex-start' | 'center' | 'flex-end' | 'stretch';
 
-  width: number | 'auto';
-  height: number | 'auto';
+  // Sizing: px for geometry/layout only
+  width: number;
+  height: number;
+  // Optional CSS overrides for width/height. When present,渲染层应优先使用它们生成
+  // `width:` / `height:`，数值字段继续只用于几何/布局计算。
+  cssWidth?: string;
+  cssHeight?: string;
   transform2x2: { a: number; b: number; c: number; d: number };
   origin: 'top left' | 'center';
   // For rotated/reflected flex items, renderer may allocate an outer reserved box

@@ -1,6 +1,7 @@
 import { mapEnum, normUpper } from './enum';
 import { buildFontStack } from './fonts';
 import { computeBorderRadius, type RadiiData } from './borderRadius';
+import { dimensionToNumber } from './dimension';
 import type {
   FigmaGradientPaint,
   FigmaImagePaint,
@@ -353,15 +354,18 @@ export function collectTextCss(node: { text?: FigmaText }): TextCssResult {
   const parts: string[] = [];
   const align = normUpper(text.textAlignHorizontal);
   
-  // Why: preserve explicit breaks; wrap only for fixed/multi-line
+  // Why: preserve explicit breaks; WIDTH 视为单行，其它允许换行
   const autoResize = normUpper((text as any).textAutoResize);
   const truncation = normUpper((text as any).textTruncation);
   const shouldTruncate = truncation === 'ENDING' || autoResize === 'TRUNCATE';
   if (shouldTruncate) {
     parts.push('white-space:nowrap;overflow:hidden;text-overflow:ellipsis;');
-  } else if (autoResize === 'WIDTH' || autoResize === 'WIDTH_AND_HEIGHT') {
+  } else if (autoResize === 'WIDTH') {
+    // Single-line, width-driven text: keep pre-style spacing but avoid soft wraps
     parts.push('white-space:pre;');
   } else {
+    // Multi-line / auto-height text (including WIDTH_AND_HEIGHT) should wrap
+    // naturally while preserving explicit spaces and line breaks.
     parts.push('white-space:pre-wrap;');
   }
   
@@ -373,7 +377,8 @@ export function collectTextCss(node: { text?: FigmaText }): TextCssResult {
   // Why: use flex vertical align only for single-line to avoid breaking wrapping
   const vAlign = normUpper((text as any).textAlignVertical);
   let usesFlexColumn = false;
-  const isSingleLine = autoResize === 'WIDTH' || autoResize === 'WIDTH_AND_HEIGHT';
+  // 好品味：只有 WIDTH 真正是一行文本，WIDTH_AND_HEIGHT 属于多行文本，不能再用单行的 flex 对齐方式去破坏换行
+  const isSingleLine = autoResize === 'WIDTH';
   if (isSingleLine) {
     if (vAlign === 'TOP') parts.push('display:flex;align-items:flex-start;');
     else if (vAlign === 'CENTER') parts.push('display:flex;align-items:center;');
@@ -525,8 +530,8 @@ export function buildMaskCss(mask: FigmaNode): string {
   const fills = mask.style!.fills!;
   const imageFill = fills.find(f => normUpper(f.type) === 'IMAGE') as FigmaImagePaint;
 
-  const boxW = mask.width!;
-  const boxH = mask.height!;
+  const boxW = dimensionToNumber(mask.width as any, `buildMaskCss:width for node ${mask.id}`);
+  const boxH = dimensionToNumber(mask.height as any, `buildMaskCss:height for node ${mask.id}`);
   const url = `images/${imageFill.imageId}.png`;
   const scale = normUpper(imageFill.scaleMode) || 'FILL';
 

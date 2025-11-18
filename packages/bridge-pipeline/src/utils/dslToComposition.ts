@@ -1,5 +1,6 @@
 import * as cheerio from 'cheerio';
 import type { CompositionInput, FigmaNode } from '../types/figma';
+import { parseDimensionAttr } from './dimension';
 
 type Padding = { t: number; r: number; b: number; l: number };
 type Radius = number | { tl: number; tr: number; br: number; bl: number };
@@ -89,6 +90,9 @@ function parseFrameNode(el: cheerio.Element, $: any): FigmaNode {
   const padding = parsePadding($el.attr('padding'));
   const fill = $el.attr('fill');
   const radius = parseRadius($el.attr('radius'));
+  const stroke = $el.attr('stroke');
+  const strokeWeight = $el.attr('stroke-weight');
+  const strokeAlign = $el.attr('stroke-align');
   const alignMain = $el.attr('align-main') || 'MIN';
   const alignCross = $el.attr('align-cross') || 'MIN';
   const selfAlign = $el.attr('self-align');
@@ -124,8 +128,11 @@ function parseFrameNode(el: cheerio.Element, $: any): FigmaNode {
     (node as any).renderBounds = { x: 0, y: 0, width: 100, height: 100 };
   }
 
-  if (width !== undefined) node.width = Number(width);
-  if (height !== undefined) node.height = Number(height);
+  // Preserve CSS units (vw, vh, %, etc) as strings; numeric values become px.
+  const dimW = parseDimensionAttr(width);
+  const dimH = parseDimensionAttr(height);
+  if (dimW !== undefined) node.width = dimW;
+  if (dimH !== undefined) node.height = dimH;
 
   if (layout) {
     node.layoutMode = layout.toUpperCase();
@@ -141,6 +148,14 @@ function parseFrameNode(el: cheerio.Element, $: any): FigmaNode {
     (node as any).layoutAlign = selfAlign;
   }
 
+  const grow = $el.attr('grow');
+  if (grow !== undefined) {
+    const growValue = grow === '' || grow === 'true' ? 1 : Number(grow);
+    if (growValue > 0) {
+      (node as any).layoutGrow = growValue;
+    }
+  }
+
   if (padding) {
     (node as any).paddingTop = padding.t;
     (node as any).paddingRight = padding.r;
@@ -148,7 +163,7 @@ function parseFrameNode(el: cheerio.Element, $: any): FigmaNode {
     (node as any).paddingLeft = padding.l;
   }
 
-  if (fill || radius) {
+  if (fill || radius || stroke) {
     node.style = node.style || {};
     if (fill) {
       const color = parseColor(fill);
@@ -159,6 +174,27 @@ function parseFrameNode(el: cheerio.Element, $: any): FigmaNode {
         (node.style as any).radii = { uniform: radius };
       } else {
         (node.style as any).radii = { corners: [radius.tl, radius.tr, radius.br, radius.bl] };
+      }
+    }
+    if (stroke) {
+      if (!strokeWeight) {
+        throw new Error(`dslToComposition: stroke-weight is required when stroke is set on frame ${id}`);
+      }
+      const weightNum = Number(strokeWeight);
+      if (!Number.isFinite(weightNum)) {
+        throw new Error(`dslToComposition: invalid stroke-weight "${strokeWeight}" on frame ${id}`);
+      }
+      const color = parseColor(stroke);
+      (node.style as any).strokes = [{
+        type: 'SOLID',
+        color: color,
+        visible: true
+      }];
+
+      (node.style as any).strokeWeights = { t: weightNum, r: weightNum, b: weightNum, l: weightNum };
+
+      if (strokeAlign) {
+        (node.style as any).strokeAlign = strokeAlign;
       }
     }
   }

@@ -129,8 +129,16 @@ function layoutToCss(layout: RenderNodeIR['layout']): {
   const partsSize: string[] = [];
   const w = layout.width;
   const h = layout.height;
-  if (typeof w === 'number') partsSize.push(`width:${fmtPx(w)};`);
-  if (typeof h === 'number') partsSize.push(`height:${fmtPx(h)};`);
+  const cssWidth = layout.cssWidth;
+  const cssHeight = layout.cssHeight;
+  const wCss = cssWidth !== undefined
+    ? cssWidth
+    : (typeof w === 'number' ? fmtPx(w) : undefined);
+  const hCss = cssHeight !== undefined
+    ? cssHeight
+    : (typeof h === 'number' ? fmtPx(h) : undefined);
+  if (wCss !== undefined) partsSize.push(`width:${wCss};`);
+  if (hCss !== undefined) partsSize.push(`height:${hCss};`);
   if (typeof layout.flexGrow === 'number' && layout.flexGrow > 0) {
     partsSize.push(`flex-grow:${layout.flexGrow};`);
     if (typeof layout.flexShrink === 'number' && layout.flexShrink === 0) partsSize.push('flex-shrink:0;');
@@ -450,12 +458,14 @@ async function renderFrameNode(ctx: RenderContext): Promise<string> {
   if (ctx.mode === 'content' && !hasWrapper) {
     const util = await layoutToTailwindClasses(layout, boxCss || '');
     if (util.classNames.length) utilClasses.push(...util.classNames);
-    if (typeof layout.width === 'number' && shouldUseWidthClass(layout.width, ctx.sizeFreq)) {
+    const hasCssWidth = typeof layout.cssWidth === 'string';
+    const hasCssHeight = typeof layout.cssHeight === 'string';
+    if (!hasCssWidth && typeof layout.width === 'number' && shouldUseWidthClass(layout.width, ctx.sizeFreq)) {
       const cw = `w-[${Math.round(layout.width*100)/100}px]`;
       utilClasses.push(cw);
       if (ctx.usedClasses) ctx.usedClasses.add(cw);
     }
-    if (typeof layout.height === 'number' && shouldUseHeightClass(layout.height, ctx.sizeFreq)) {
+    if (!hasCssHeight && typeof layout.height === 'number' && shouldUseHeightClass(layout.height, ctx.sizeFreq)) {
       const ch = `h-[${Math.round(layout.height*100)/100}px]`;
       utilClasses.push(ch);
       if (ctx.usedClasses) ctx.usedClasses.add(ch);
@@ -532,20 +542,23 @@ async function renderTextNode(ctx: RenderContext): Promise<string> {
   boxCss = optimizeBoxCss(boxCss, cssCtx);
   const utilClassesT: string[] = [];
   if (ctx.mode === 'content') {
-    const util = await layoutToTailwindClasses(ctx.irNode.layout, boxCss || '');
+    const layout = ctx.irNode.layout;
+    const util = await layoutToTailwindClasses(layout, boxCss || '');
     if (util.classNames.length) utilClassesT.push(...util.classNames);
 
     // Why: respect textAutoResize: skip width/height classes when text uses auto sizing
     const hasAutoWidth = /width\s*:\s*auto\s*(;|$)/i.test(boxCss || '');
     const hasAutoHeight = /height\s*:\s*auto\s*(;|$)/i.test(boxCss || '');
 
-    const w = ctx.irNode.layout.width; const h = ctx.irNode.layout.height;
-    if (typeof w === 'number' && !hasAutoWidth && shouldUseWidthClass(w, ctx.sizeFreq)) {
+    const hasCssWidth = typeof layout.cssWidth === 'string';
+    const hasCssHeight = typeof layout.cssHeight === 'string';
+    const w = layout.width; const h = layout.height;
+    if (!hasCssWidth && typeof w === 'number' && !hasAutoWidth && shouldUseWidthClass(w, ctx.sizeFreq)) {
       const cw = `w-[${Math.round(w*100)/100}px]`;
       utilClassesT.push(cw);
       if (ctx.usedClasses) ctx.usedClasses.add(cw);
     }
-    if (typeof h === 'number' && !hasAutoHeight && shouldUseHeightClass(h, ctx.sizeFreq)) {
+    if (!hasCssHeight && typeof h === 'number' && !hasAutoHeight && shouldUseHeightClass(h, ctx.sizeFreq)) {
       const ch = `h-[${Math.round(h*100)/100}px]`;
       utilClassesT.push(ch);
       if (ctx.usedClasses) ctx.usedClasses.add(ch);

@@ -93,8 +93,9 @@ export interface FigmaNode {
   name?: string;
   type?: string; // TEXT, FRAME, RECTANGLE, VECTOR, etc.
   visible?: boolean;
-  width?: number;
-  height?: number;
+  // Upstream Figma uses numeric widths/heights; DSL/bridge may inject CSS units (e.g. '100%', '100vw').
+  width?: number | string;
+  height?: number | string;
   absoluteTransform?: number[][]; // [[a,c,e],[b,d,f]]
   renderBounds?: FigmaRect; // upstream-provided content bounds (with stroke/effects)
   absoluteRenderBounds?: FigmaRect | null;
