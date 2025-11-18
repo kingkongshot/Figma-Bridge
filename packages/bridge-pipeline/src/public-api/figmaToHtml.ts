@@ -26,7 +26,13 @@ export async function figmaToHtml(input: { composition: any }, options: FigmaToH
   });
 
   // Also build content assets (for export packages)
-  const content = await createContentAssets(ir.nodes, ir.cssRules);
+  const content = await createContentAssets({
+    composition,
+    irNodes: ir.nodes,
+    cssRules: ir.cssRules,
+    renderUnion: ir.renderUnion,
+    debugEnabled: false,
+  });
 
   const mappedPreview = applyAssetUrlProvider(preview.html, preview.cssText, ir.nodes, options.assetUrlProvider);
   const mappedContent = applyAssetUrlProvider(content.bodyHtml, content.cssText, ir.nodes, options.assetUrlProvider);
@@ -41,9 +47,11 @@ export async function figmaToHtml(input: { composition: any }, options: FigmaToH
     debugHtml: preview.debugHtml,
     debugCss: preview.debugCss,
     content: {
-      bodyHtml: mappedContent.htmlFragment || mappedContent.html, // see provider mapper returns for fragments
+      bodyHtml: mappedContent.htmlFragment || mappedContent.html,
       cssText: mappedContent.cssText,
       headLinks: '',
+      baseWidth: content.baseWidth,
+      baseHeight: content.baseHeight,
     }
   };
 }

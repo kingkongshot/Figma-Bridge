@@ -229,7 +229,7 @@ function rewriteUploadsToImages(html: string): string {
   return html.replace(/\/uploads\/([a-zA-Z0-9_-]+)\.png/g, 'images/$1.png');
 }
 
-function writeOutputPackage(bodyHtml: string, cssText: string, headLinks: string, imageIds: string[], svgFiles: string[]) {
+function writeOutputPackage(bodyHtml: string, cssText: string, headLinks: string, imageIds: string[], svgFiles: string[], baseWidth: number, baseHeight: number) {
   try {
     ensureOutputDir();
     for (const id of imageIds) {
@@ -259,7 +259,41 @@ function writeOutputPackage(bodyHtml: string, cssText: string, headLinks: string
     const formattedCss = formatCss(cssText);
     fs.writeFileSync(path.join(OUTPUT_DIR, 'styles.css'), formattedCss, 'utf8');
 
-    let rawHtmlDoc = `<!doctype html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"utf-8\" />\n    <title>Exported Content</title>\n${headLinks}    <link rel=\"stylesheet\" href=\"styles.css\"/>\n  </head>\n  <body>\n    <div class=\"figma-export\">\n${bodyHtml}\n    </div>\n  </body>\n</html>`;
+    const viewportStyles = `
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100vw;
+      min-height: 100vh;
+      overflow-x: hidden;
+      overflow-y: auto;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      background: #f0f0f0;
+    }
+    .viewport {
+      transform-origin: top center;
+    }`;
+
+    const viewportScript = `
+    window.addEventListener('DOMContentLoaded', function() {
+      var baseWidth = ${baseWidth};
+
+      function fit() {
+        var viewport = document.querySelector('.viewport');
+        if (!viewport) return;
+
+        var scale = window.innerWidth / baseWidth;
+
+        viewport.style.transform = 'scale(' + scale + ')';
+      }
+
+      fit();
+      window.addEventListener('resize', fit);
+    });`;
+
+    let rawHtmlDoc = `<!doctype html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"utf-8\" />\n    <title>Exported Content</title>\n${headLinks}    <link rel=\"stylesheet\" href=\"styles.css\"/>\n    <style>${viewportStyles}</style>\n  </head>\n  <body>\n${bodyHtml}\n    <script>${viewportScript}</script>\n  </body>\n</html>`;
     try {
       const post = normalizeHtml(rawHtmlDoc);
       if (post && post.html) rawHtmlDoc = post.html;
@@ -541,7 +575,9 @@ app.post('/api/composition', async (req, res) => {
     const headLinks2 = buildHeadFontLinks(googleFontsUrl, chineseFontsUrls);
     const images = Array.isArray((lastResult as any)?.assets?.images) ? (lastResult as any).assets.images : [];
     const svgs = Array.isArray((lastResult as any)?.assets?.svgs) ? (lastResult as any).assets.svgs : [];
-    writeOutputPackage(lastResult.content.bodyHtml, lastResult.content.cssText, headLinks2, images, svgs);
+    const baseWidth = (lastResult.content as any).baseWidth || renderRes.baseWidth;
+    const baseHeight = (lastResult.content as any).baseHeight || renderRes.baseHeight;
+    writeOutputPackage(lastResult.content.bodyHtml, lastResult.content.cssText, headLinks2, images, svgs, baseWidth, baseHeight);
   } catch (e) {
     // ignore content build failure
   }

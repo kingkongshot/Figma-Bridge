@@ -71,7 +71,7 @@ async function main() {
   write(cssPath, result.content.cssText);
   write(headLinksPath, '');
 
-  const indexHtml = `<!doctype html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"utf-8\"/>\n    <title>Content Preview</title>\n    <link rel=\"stylesheet\" href=\"./styles.css\"/>\n  </head>\n  <body>\n    <div class=\"figma-export\">\n${result.content.bodyHtml}\n    </div>\n  </body>\n</html>`;
+  const indexHtml = `<!doctype html>\n<html lang=\"en\">\n  <head>\n    <meta charset=\"utf-8\"/>\n    <title>Content Preview</title>\n    <link rel=\"stylesheet\" href=\"./styles.css\"/>\n  </head>\n  <body>\n${result.content.bodyHtml}\n  </body>\n</html>`;
   write(path.join(outDir, 'index.html'), indexHtml);
 
   write(path.join(outDir, 'single-file.html'), result.html);

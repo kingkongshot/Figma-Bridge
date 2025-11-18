@@ -852,18 +852,8 @@ async function buildPreviewPieces(
 export async function createPreviewHtml(
   config: PreviewBuildInput
 ): Promise<PreviewHtmlResult> {
-  const { composition, irNodes, cssRules, renderUnion, debugEnabled = false } = config || ({} as PreviewBuildInput);
-  if (!composition || typeof composition !== 'object') {
-    throw new Error('Invalid composition payload');
-  }
-  const bounds = composition.bounds as Bounds;
-  if (!bounds || typeof bounds.width !== 'number' || typeof bounds.height !== 'number') {
-    throw new Error('Composition bounds missing width/height');
-  }
-  const children = Array.isArray(composition.children) ? composition.children : [];
-  if (!children.length) {
-    throw new Error('Composition contains no children');
-  }
+  const { composition, irNodes, cssRules, renderUnion, debugEnabled = false } = config;
+  const { bounds } = composition;
 
   const { shapeHtml, debugHtml, usedClasses, viewport, contentLayerStyle, sharedCss } = await buildPreviewPieces(
     composition,
@@ -888,26 +878,12 @@ export async function createPreviewHtml(
   return { html, baseWidth: viewport.width, baseHeight: viewport.height, renderUnion, debugHtml: overlayStr, debugCss };
 }
 
+// Internal: used by figmaToHtml for preview path; signature may change without notice
 export async function createPreviewAssets(
   config: PreviewBuildInput
 ): Promise<{ html: string; cssText: string; baseWidth: number; baseHeight: number; renderUnion: Rect; debugHtml: string; debugCss: string }> {
-  const { composition, irNodes, cssRules, renderUnion, debugEnabled = false } = config || ({} as PreviewBuildInput);
-  if (!composition || typeof composition !== 'object') {
-    throw new Error('Invalid composition payload');
-  }
-  const bounds = composition.bounds as Bounds;
-  if (!bounds || typeof bounds.width !== 'number' || typeof bounds.height !== 'number') {
-    throw new Error('Composition bounds missing width/height');
-  }
-  const children = Array.isArray(composition.children) ? composition.children : [];
-  if (!children.length) {
-    throw new Error('Composition contains no children');
-  }
-
-  // Why: reserve 4px padding for debug overlay outline (max 3px when selected)
-  const { viewWidth, viewHeight, minXView, minYView } = computeViewport(bounds, renderUnion, 4);
-  const safeViewWidth = Math.ceil(viewWidth);
-  const safeViewHeight = Math.ceil(viewHeight);
+  const { composition, irNodes, cssRules, renderUnion, debugEnabled = false } = config;
+  const { bounds } = composition;
 
   const { shapeHtml, debugHtml, usedClasses, viewport, contentLayerStyle, sharedCss } = await buildPreviewPieces(
     composition,
@@ -929,47 +905,37 @@ export async function createPreviewAssets(
   return { html: rawHtmlDoc, cssText, baseWidth: viewport.width, baseHeight: viewport.height, renderUnion, debugHtml: overlayStr, debugCss };
 }
 
+// Internal: used by figmaToHtml for export path; signature may change without notice
 export async function createContentAssets(
-  irNodes: RenderNodeIR[],
-  cssRules: string
-): Promise<{ bodyHtml: string; cssText: string; headLinks: string }> {
-  const dummyCssCollector = new CssCollector();
-  // Why: compute size frequencies for this content export
-  const __localSizeFreq: SizeFreq = (() => {
-    const wMap = new Map<number, number>();
-    const hMap = new Map<number, number>();
-    collectSizeFreq(irNodes, wMap, hMap);
-    return { w: wMap, h: hMap } as SizeFreq;
-  })();
-  const boxCssList: string[] = irNodes.map((n) => (n?.style?.boxCss || ''));
-  const shared = buildSharedClasses(boxCssList, 2);
-  const sharedCss = generateClassCss(shared.classes, '.figma-export');
+  config: PreviewBuildInput
+): Promise<{ bodyHtml: string; cssText: string; headLinks: string; baseWidth: number; baseHeight: number }> {
+  const { composition, irNodes, cssRules, renderUnion, debugEnabled = false } = config;
+  const { bounds } = composition;
 
-  const nodeHtml: string[] = [];
-  const usedClasses = new Set<string>();
-  {
-    const parts = await Promise.all(
-      irNodes.map((irNode) =>
-        renderNodeUnified(irNode, {
-          stylePrefix: '',
-          irNode,
-          cssCollector: dummyCssCollector,
-          mode: 'content',
-          applySharedClass: shared.applier,
-          usedClasses,
-          sizeFreq: __localSizeFreq,
-        })
-      )
-    );
-    nodeHtml.push(...parts);
-  }
+  const { shapeHtml, usedClasses, viewport, contentLayerStyle, sharedCss } = await buildPreviewPieces(
+    composition,
+    irNodes,
+    renderUnion,
+    false  // debugEnabled: always false for export
+  );
 
-  const baseStyles = `.figma-export .svg-container > svg{display:block;width:100%;height:100%;shape-rendering:geometricPrecision;}
-.figma-export .svg-container > img{display:block;width:100%;height:100%;}`;
-  const utilityCss = buildUtilityCssSelective(usedClasses, '.figma-export');
+  // Build viewport structure (same as preview)
+  const contentLayerHtml = `          <div class=\"content-layer\"${contentLayerStyle ? ` style=\"${contentLayerStyle}\"` : ''}>
+${shapeHtml.join('\n')}
+          </div>`;
+  const bodyHtml = `    <div class=\"viewport\">
+      <div class=\"view-offset\">
+        <div class=\"composition\" data-figma-render=\"1\">
+${contentLayerHtml}
+        </div>
+      </div>
+    </div>`;
+
+  const baseStyles = buildBaseStyles(viewport, bounds);
+  const utilityCss = buildUtilityCssSelective(usedClasses);
   const cssText = `${baseStyles}\n${utilityCss}\n${cssRules || ''}\n${sharedCss}`;
   const headLinks = '';
-  return { bodyHtml: nodeHtml.join('\n'), cssText, headLinks };
+  return { bodyHtml, cssText, headLinks, baseWidth: viewport.width, baseHeight: viewport.height };
 }
 
 export async function createContentHtml(
