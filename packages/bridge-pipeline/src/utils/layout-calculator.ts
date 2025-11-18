@@ -194,9 +194,17 @@ export function computeLayout(
     // 之前这里把所有非 grow 的 item 都改成 flex-shrink:0，导致文本和气泡永远不能被压窄，窗口变窄时只会整体溢出而不会在内部换行。
     // 现在遵循浏览器默认：除非有明确需求，否则不要锁死 shrink。
     // 为兼容性，仅在 grow>0 时显式标记为可收缩，其余交给默认值处理。
-    if (grow > 0) (layout as any).flexShrink = 1;
+    if (grow > 0) {
+      (layout as any).flexShrink = 1;
+    }
     const parentWrap = normUpper((flags as any).parentWrap) || 'NO_WRAP';
-    if (grow > 0) (layout as any).flexBasis = parentWrap === 'WRAP' ? 'auto' : (String(node?.type || '').toUpperCase() === 'TEXT' ? 'auto' : 0);
+    if (grow > 0) {
+      // Figma 的 layoutGrow + width 语义：width 是目标尺寸（含 padding），多个 grow 元素会等分空间但保持 width 相等
+      // CSS 的 flex-grow + flex-basis 语义：flex-basis 是起始尺寸，配合 box-sizing:border-box 时也包含 padding
+      // 所以应该把 width 作为 flex-basis，而不是设为 0
+      const isText = String(node?.type || '').toUpperCase() === 'TEXT';
+      (layout as any).flexBasis = parentWrap === 'WRAP' || isText ? 'auto' : (typeof outWidth === 'number' ? outWidth : 0);
+    }
     const alignSelf = mapAlignSelf(node?.layoutAlign);
     if (alignSelf) (layout as any).alignSelf = alignSelf as any;
     const isStretch = computeIsStretch(String(node?.layoutAlign || 'AUTO'), (flags as any).parentAlignItemsCss);
