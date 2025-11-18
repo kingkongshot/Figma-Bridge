@@ -60,7 +60,7 @@ async function main() {
   // Keep parity with server: warm up fonts mapping but never fail
   try { await warmupChineseFontsMapping(); } catch {}
 
-  const result = await figmaToHtml({ composition }, { assetUrlProvider: (id, type) => (type === 'image' ? `/images/${id}.png` : `/svgs/${id}`), debugEnabled: false });
+  const result = await figmaToHtml({ composition }, { assetUrlProvider: (id, type) => (type === 'image' ? `images/${id}.png` : `svgs/${id}`), debugEnabled: false });
   const outDir = path.join(process.cwd(), 'debug', 'logs', 'content');
   ensureCleanDir(outDir);
 

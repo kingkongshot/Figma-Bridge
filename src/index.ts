@@ -511,7 +511,7 @@ app.post('/api/composition', async (req, res) => {
     }
 
     const result = await figmaToHtml({ composition }, {
-      assetUrlProvider: (id, type) => (type === 'image' ? `/images/${id}.png` : `/svgs/${id}`),
+      assetUrlProvider: (id, type) => (type === 'image' ? `images/${id}.png` : `svgs/${id}`),
       debugEnabled: true,
     });
     lastResult = result;

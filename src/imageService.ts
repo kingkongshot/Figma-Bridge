@@ -23,7 +23,7 @@ export function getImagePath(id: string): string | null {
   if (!safe) return null;
   const filename = `${safe}.png`;
   const abs = path.join(UPLOAD_DIR, filename);
-  return fs.existsSync(abs) ? `/images/${filename}` : null;
+  return fs.existsSync(abs) ? `images/${filename}` : null;
 }
 
 export function isImageAvailable(id: string): boolean {
