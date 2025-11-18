@@ -1,6 +1,6 @@
 {
-  "watch": ["src"],
-  "ext": "ts,json",
+  "watch": ["src", "packages/bridge-pipeline/dist"],
+  "ext": "ts,json,js",
   "ignore": [
     "src/**/*.spec.ts",
     "src/**/*.test.ts",
