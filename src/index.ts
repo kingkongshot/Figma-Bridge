@@ -595,7 +595,7 @@ app.post('/api/composition', async (req, res) => {
 
   let renderRes: { html: string; baseWidth: number; baseHeight: number; renderUnion: any; debugHtml: string; debugCss: string };
   let lastResult: any;
-  let irResult: { nodes: any[] } | null = null;
+  let irResult: { nodes: any[]; fontMeta?: any } | null = null;
   let compareHtml: string | undefined;
   // Fonts: compute once and reuse for preview + export
   let googleFontsUrl: string | null = null;
@@ -603,22 +603,30 @@ app.post('/api/composition', async (req, res) => {
   try {
     normalizeComposition(composition);
     if (DEBUG_ENABLED) {
-      try { writeDebugJson('composition', composition); } catch { }
+      try {
+        writeDebugJson('composition', composition);
+      } catch (e) {
+        console.error('[Debug] Failed to write composition.json:', e);
+      }
     }
 
     const fc = extractFontsFromComposition(composition);
     googleFontsUrl = globalSettings.useOnlineFonts ? fc.getGoogleFontsUrl() : null;
     chineseFontsUrls = globalSettings.useOnlineFonts ? fc.getChineseFontsUrls() : [];
 
-    // Build IR for sidebar/properties (keep simple structure used by frontend)
+    // Build IR for sidebar/properties (keep structure used by frontend; include fontMeta for font preloading)
     try {
       const ir = compositionToIR(composition as any);
-      irResult = { nodes: ir.nodes };
+      irResult = { nodes: ir.nodes, fontMeta: ir.fontMeta };
       if (DEBUG_ENABLED) {
-        try { writeDebugJson('ir', { nodes: ir.nodes }); } catch { }
+        try {
+          writeDebugJson('ir', { nodes: ir.nodes, fontMeta: ir.fontMeta });
+        } catch (e) {
+          console.error('[Debug] Failed to write ir.json:', e);
+        }
       }
     } catch (e) {
-      // IR generation failed; sidebar tree may be empty
+      console.error('[IR] Generation failed; sidebar tree may be empty:', e);
     }
 
     const result = await figmaToHtml({ composition }, {

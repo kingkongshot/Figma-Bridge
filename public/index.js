@@ -349,133 +349,187 @@ function injectDebugIntoFrame(previewFrame, state) {
         }
       }
 
-      async function captureHtmlRender() {
+      function isDslComposition() {
+        try {
+          const comp = (state && state.composition) || null;
+          return !!(comp && comp._bridgeSource === 'dsl');
+        } catch {
+          return false;
+        }
+      }
+
+      function resolveSnapshotContext() {
         if (!previewFrame) {
           console.log('[Snapshot] No iframe element');
-          return;
+          return null;
         }
         const win = previewFrame.contentWindow;
         if (!win) {
           console.log('[Snapshot] No contentWindow');
-          return;
+          return null;
         }
         const doc = win.document;
         if (!doc) {
           console.log('[Snapshot] No document');
-          return;
+          return null;
         }
         const viewport = doc.querySelector('.viewport');
         if (!viewport) {
           console.log('[Snapshot] .viewport not found, waiting...');
           setTimeout(captureHtmlRender, 500);
-          return;
+          return null;
         }
+        let target = viewport;
+        if (isDslComposition()) {
+          const comp = doc.querySelector('.composition');
+          if (comp) target = comp;
+        }
+        return { win, doc, viewport: target };
+      }
+
+      function ensureHtmlToImageLoaded() {
         if (!(window.htmlToImage && window.htmlToImage.toPng)) {
           console.error('[Snapshot] html-to-image not loaded');
-          return;
+          return false;
         }
+        return true;
+      }
+
+      async function waitForFontsInUse(win, doc, maxWaitMs) {
+        if (!doc.fonts || typeof doc.fonts.load !== 'function') return;
+        const start = Date.now();
+        const spans = Array.from(doc.querySelectorAll('span[style*="font-family"], span[style*="font-weight"]'));
+        const combos = new Map();
+        for (const el of spans) {
+          const style = (el instanceof HTMLElement) ? el.getAttribute('style') || '' : '';
+          const famMatch = style.match(/font-family\s*:\s*([^;]+)/i);
+          const wMatch = style.match(/font-weight\s*:\s*(\d{2,3})/i);
+          const italic = /font-style\s*:\s*italic/i.test(style);
+          if (!famMatch || !wMatch) continue;
+          let fam = famMatch[1].split(',')[0].trim();
+          fam = fam.replace(/["']/g, '');
+          const weight = parseInt(wMatch[1], 10) || 400;
+          const key = `${fam}|${italic ? 'italic' : 'normal'}|${weight}`;
+          combos.set(key, { fam, italic, weight });
+        }
+        if (!combos.size) return;
+
         try {
-          async function waitForFontsInUse(doc, maxWaitMs = 5000) {
-            if (!doc.fonts || typeof doc.fonts.load !== 'function') return;
-            const start = Date.now();
-            const spans = Array.from(doc.querySelectorAll('span[style*="font-family"], span[style*="font-weight"]'));
-            const combos = new Map();
-            for (const el of spans) {
-              const style = (el instanceof HTMLElement) ? el.getAttribute('style') || '' : '';
-              const famMatch = style.match(/font-family\s*:\s*([^;]+)/i);
-              const wMatch = style.match(/font-weight\s*:\s*(\d{2,3})/i);
-              const italic = /font-style\s*:\s*italic/i.test(style);
-              if (!famMatch || !wMatch) continue;
-              let fam = famMatch[1].split(',')[0].trim();
-              fam = fam.replace(/["']/g, '');
-              const weight = parseInt(wMatch[1], 10) || 400;
-              const key = `${fam}|${italic ? 'italic' : 'normal'}|${weight}`;
-              combos.set(key, { fam, italic, weight });
-            }
-            if (!combos.size) return;
-
-            try {
-              const map = win.__fontWeightMapping || {};
-              for (const [k, v] of Object.entries(map)) {
-                const mapped = parseInt(String(v), 10);
-                if (!mapped) continue;
-                for (const c of combos.values()) {
-                  if (c.weight === parseInt(String(k), 10)) {
-                    const key2 = `${c.fam}|${c.italic ? 'italic' : 'normal'}|${mapped}`;
-                    combos.set(key2, { fam: c.fam, italic: c.italic, weight: mapped });
-                  }
-                }
-              }
-            } catch {}
-
-            const promises = [];
+          const map = win.__fontWeightMapping || {};
+          for (const [k, v] of Object.entries(map)) {
+            const mapped = parseInt(String(v), 10);
+            if (!mapped) continue;
             for (const c of combos.values()) {
-              const desc = `${c.italic ? 'italic ' : ''}${c.weight} 16px ${c.fam}`;
-              promises.push(doc.fonts.load(desc));
-            }
-            let done = false;
-            const timer = new Promise((resolve) => setTimeout(resolve, Math.max(0, maxWaitMs - (Date.now() - start))));
-            try { await Promise.race([Promise.all(promises).then(() => { done = true; }), timer]); } catch {}
-            if (!done) {
-              console.warn('[Snapshot] Font loads timed out; proceeding');
+              if (c.weight === parseInt(String(k), 10)) {
+                const key2 = `${c.fam}|${c.italic ? 'italic' : 'normal'}|${mapped}`;
+                combos.set(key2, { fam: c.fam, italic: c.italic, weight: mapped });
+              }
             }
           }
+        } catch {}
 
-          try {
-            const cache = readFontCache();
-            const irFontsRaw = getIrFontsFromState(state);
-            const irFonts = normalizeIrFonts(irFontsRaw);
-            const irFamilies = new Set(irFonts.map(f => f.family));
-            const cachedSubset = [];
-            for (const fam in (cache.families || {})) {
-              if (!irFamilies.has(fam)) continue;
-              const entry = cache.families[fam] || { weights: [], italic: false };
-              cachedSubset.push({ family: fam, weights: entry.weights || [], italic: !!entry.italic });
-            }
-            const cachedCombos = computeCombosFromSpec(cachedSubset);
-            if (cachedCombos.length) await loadFontCombos(doc, cachedCombos, 2000);
-            const irCombos = computeCombosFromSpec(irFonts);
-            if (irCombos.length) await loadFontCombos(doc, irCombos, 3000);
-          } catch {}
+        const promises = [];
+        for (const c of combos.values()) {
+          const desc = `${c.italic ? 'italic ' : ''}${c.weight} 16px ${c.fam}`;
+          promises.push(doc.fonts.load(desc));
+        }
+        let done = false;
+        const timer = new Promise((resolve) => setTimeout(resolve, Math.max(0, maxWaitMs - (Date.now() - start))));
+        try { await Promise.race([Promise.all(promises).then(() => { done = true; }), timer]); } catch {}
+        if (!done) {
+          console.warn('[Snapshot] Font loads timed out; proceeding');
+        }
+      }
 
-          if (doc.fonts && doc.fonts.ready && typeof doc.fonts.ready.then === 'function') {
-            try { await doc.fonts.ready; } catch (e) {}
+      async function preloadFontsForSnapshot(doc) {
+        try {
+          const cache = readFontCache();
+          const irFontsRaw = getIrFontsFromState(state);
+          const irFonts = normalizeIrFonts(irFontsRaw);
+          const irFamilies = new Set(irFonts.map(f => f.family));
+          const cachedSubset = [];
+          for (const fam in (cache.families || {})) {
+            if (!irFamilies.has(fam)) continue;
+            const entry = cache.families[fam] || { weights: [], italic: false };
+            cachedSubset.push({ family: fam, weights: entry.weights || [], italic: !!entry.italic });
           }
-          if (win.requestAnimationFrame) {
-            await new Promise((r) => win.requestAnimationFrame(() => r()));
-          }
-          await waitForFontsInUse(doc, 6000); 
-          if (win.requestAnimationFrame) {
-            await new Promise((r) => win.requestAnimationFrame(() => r()));
-          }
-          console.log('[Snapshot] Capturing viewport via html-to-image...');
-          const debugOverlay = doc.querySelector('.debug-overlay');
-          const oldDisplay = debugOverlay && debugOverlay instanceof HTMLElement ? debugOverlay.style.display : '';
-          if (debugOverlay && debugOverlay instanceof HTMLElement) debugOverlay.style.display = 'none';
-          
-          const dataUrl = await window.htmlToImage.toPng(viewport, { 
-            pixelRatio: 1, 
-            cacheBust: true, 
-            backgroundColor: 'transparent' 
-          });
-          
-          if (debugOverlay && debugOverlay instanceof HTMLElement) debugOverlay.style.display = oldDisplay;
-          
-          console.log('[Snapshot] Capture success, uploading to server...');
-          const response = await fetch('/api/debug/html-render', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ htmlRender: { format: 'png', dataUrl } })
-          });
-          const json = await response.json();
-          console.log('[Snapshot] Server response:', json);
-          try {
-            const cache0 = readFontCache();
-            const irFontsRaw = getIrFontsFromState(state);
-            const irFonts = normalizeIrFonts(irFontsRaw);
-            const merged = mergeCacheWithIR(cache0, irFonts);
-            writeFontCache(merged);
-          } catch {}
+          const cachedCombos = computeCombosFromSpec(cachedSubset);
+          if (cachedCombos.length) await loadFontCombos(doc, cachedCombos, 2000);
+          const irCombos = computeCombosFromSpec(irFonts);
+          if (irCombos.length) await loadFontCombos(doc, irCombos, 3000);
+        } catch (e) {
+          console.warn('[Snapshot] preloadFontsForSnapshot failed:', e);
+        }
+      }
+
+      function nextAnimationFrame(win) {
+        if (!win.requestAnimationFrame) return Promise.resolve();
+        return new Promise((resolve) => win.requestAnimationFrame(() => resolve()));
+      }
+
+      async function ensureFontsReady(win, doc) {
+        await preloadFontsForSnapshot(doc);
+
+        if (doc.fonts && doc.fonts.ready && typeof doc.fonts.ready.then === 'function') {
+          try { await doc.fonts.ready; } catch (e) {}
+        }
+
+        await nextAnimationFrame(win);
+        await waitForFontsInUse(win, doc, 6000);
+        await nextAnimationFrame(win);
+      }
+
+      async function captureViewportToDataUrl(doc, viewport) {
+        console.log('[Snapshot] Capturing viewport via html-to-image...');
+        const debugOverlay = doc.querySelector('.debug-overlay');
+        const oldDisplay = debugOverlay && debugOverlay instanceof HTMLElement ? debugOverlay.style.display : '';
+        if (debugOverlay && debugOverlay instanceof HTMLElement) debugOverlay.style.display = 'none';
+
+        const dataUrl = await window.htmlToImage.toPng(viewport, {
+          pixelRatio: 1,
+          cacheBust: true,
+          backgroundColor: 'transparent'
+        });
+
+        if (debugOverlay && debugOverlay instanceof HTMLElement) debugOverlay.style.display = oldDisplay;
+        return dataUrl;
+      }
+
+      async function uploadSnapshot(dataUrl) {
+        console.log('[Snapshot] Capture success, uploading to server...');
+        const response = await fetch('/api/debug/html-render', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ htmlRender: { format: 'png', dataUrl } })
+        });
+        const json = await response.json();
+        console.log('[Snapshot] Server response:', json);
+      }
+
+      function updateFontCacheFromIR() {
+        try {
+          const cache0 = readFontCache();
+          const irFontsRaw = getIrFontsFromState(state);
+          const irFonts = normalizeIrFonts(irFontsRaw);
+          const merged = mergeCacheWithIR(cache0, irFonts);
+          writeFontCache(merged);
+        } catch (e) {
+          console.warn('[Snapshot] updateFontCacheFromIR failed:', e);
+        }
+      }
+
+      async function captureHtmlRender() {
+        const ctx = resolveSnapshotContext();
+        if (!ctx) return;
+        if (!ensureHtmlToImageLoaded()) return;
+
+        const { win, doc, viewport } = ctx;
+
+        try {
+          await ensureFontsReady(win, doc);
+          const dataUrl = await captureViewportToDataUrl(doc, viewport);
+          await uploadSnapshot(dataUrl);
+          updateFontCacheFromIR();
         } catch (e) {
           console.error('[Snapshot] Exception:', e);
         }
@@ -867,10 +921,14 @@ async function loadDslFileContent(filename) {
       hasChildren: composition && composition.children ? composition.children.length : 0
     });
 
+    const compositionForRender = composition && typeof composition === 'object'
+      ? { ...composition, _bridgeSource: 'dsl' }
+      : composition;
+
     const renderResponse = await fetch('/api/composition', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ composition })
+      body: JSON.stringify({ composition: compositionForRender })
     });
 
     if (!renderResponse.ok) {
