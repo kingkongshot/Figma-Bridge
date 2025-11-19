@@ -341,11 +341,25 @@ function attachFrameChildren(node: FigmaNode, el: cheerio.Element, $: any, baseP
   });
 }
 
+function applyFixedSizeShrink(node: FigmaNode, attrs: FrameAttributes): void {
+  // Fixed-size elements should not shrink in flex containers to prevent layout collapse
+  // Trust parseDimensionAttr to handle invalid inputs
+  const isFixedSize = !!(parseDimensionAttr(attrs.width) || parseDimensionAttr(attrs.height));
+
+  // Sanitize grow value: treat non-numeric strings (like "false") as 0
+  const grow = Number(attrs.grow) || 0;
+
+  if (isFixedSize && grow === 0) {
+    node.layoutShrink = 0;
+  }
+}
+
 function parseFrameNode(el: cheerio.Element, $: any, basePath?: string): FigmaNode {
   const attrs = buildFrameAttributes($(el));
   const node = buildFrameBase(attrs);
   applyFrameLayout(node, attrs);
   applyFrameStyle(node, attrs);
+  applyFixedSizeShrink(node, attrs);
   attachFrameChildren(node, el, $, basePath);
   return node;
 }

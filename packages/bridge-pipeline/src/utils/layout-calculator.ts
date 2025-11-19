@@ -97,11 +97,18 @@ function computeFlexItemCoreProps(
   outWidth: number
 ): Partial<FlexCoreProps> {
   const grow = typeof node?.layoutGrow === 'number' ? node.layoutGrow : 0;
+  const shrink = typeof node?.layoutShrink === 'number' ? node.layoutShrink : undefined;
   const props: Partial<FlexCoreProps> = { flexGrow: grow };
 
-  // 好品味：除非有明确需求，否则不要到处强行写死 flex-shrink:0。
-  if (grow > 0) {
+  // Respect explicit layoutShrink (e.g., 0 for fixed-size elements)
+  if (shrink !== undefined) {
+    props.flexShrink = shrink;
+  } else if (grow > 0) {
+    // 好品味：除非有明确需求，否则不要到处强行写死 flex-shrink:0。
     props.flexShrink = 1;
+  }
+
+  if (grow > 0) {
     const parentWrap = normUpper(flags?.parentWrap) || 'NO_WRAP';
     const isText = isTextNode(node);
     props.flexBasis = parentWrap === 'WRAP' || isText ? 'auto' : outWidth;
@@ -182,7 +189,7 @@ function applyContainerSemantics(node: FigmaNode, layout: LayoutInfo, hasWrapper
     const w = layout.wrapper;
     const t = layout.transform2x2;
     const hasTransform = t && !(t.a === 1 && t.b === 0 && t.c === 0 && t.d === 1);
-    
+
     // Why: inset+margin:auto only safe without transform; otherwise center in pre-transform coords
     w.centerStrategy = (layout.display === 'flex' && !hasTransform) ? 'inset' : 'translate';
   }

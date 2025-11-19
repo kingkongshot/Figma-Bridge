@@ -118,6 +118,7 @@ export interface FigmaNode {
   // Flex item semantics
   layoutPositioning?: 'AUTO' | 'ABSOLUTE' | string;
   layoutGrow?: number;
+  layoutShrink?: number;
   layoutAlign?: string; // INHERIT/MIN/CENTER/MAX/STRETCH
 
   // Styling
