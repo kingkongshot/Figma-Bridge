@@ -172,7 +172,7 @@ function buildHeadFontLinks(googleFontsUrl?: string | null, chineseFontsUrls?: s
           lines.push(`    <link href="${href}" rel="stylesheet">`);
           seenHrefs.add(href);
         }
-      } catch {}
+      } catch { }
     }
   }
   return lines.length ? lines.join('\n') + '\n' : '';
@@ -199,7 +199,7 @@ function writeDebugDataUrl(name: string, dataUrl: string) {
     const buf = Buffer.from(base64, 'base64');
     const ext = mime === 'image/jpeg' ? 'jpg' : (mime === 'image/webp' ? 'webp' : 'png');
     writeDebugBinary(`${name}.${ext}`, buf);
-  } catch {}
+  } catch { }
 }
 
 const OUTPUT_DIR = path.join(process.cwd(), 'output');
@@ -372,7 +372,7 @@ function writeOutputPackage(bodyHtml: string, cssText: string, headLinks: string
     try {
       const post = normalizeHtml(rawHtmlDoc);
       if (post && post.html) rawHtmlDoc = post.html;
-    } catch {}
+    } catch { }
     const htmlDoc = formatHtml(rawHtmlDoc);
     fs.writeFileSync(path.join(OUTPUT_DIR, 'index.html'), htmlDoc, 'utf8');
     // output package written
@@ -603,7 +603,7 @@ app.post('/api/composition', async (req, res) => {
   try {
     normalizeComposition(composition);
     if (DEBUG_ENABLED) {
-      try { writeDebugJson('composition', composition); } catch {}
+      try { writeDebugJson('composition', composition); } catch { }
     }
 
     const fc = extractFontsFromComposition(composition);
@@ -615,14 +615,21 @@ app.post('/api/composition', async (req, res) => {
       const ir = compositionToIR(composition as any);
       irResult = { nodes: ir.nodes };
       if (DEBUG_ENABLED) {
-        try { writeDebugJson('ir', { nodes: ir.nodes }); } catch {}
+        try { writeDebugJson('ir', { nodes: ir.nodes }); } catch { }
       }
     } catch (e) {
       // IR generation failed; sidebar tree may be empty
     }
 
     const result = await figmaToHtml({ composition }, {
-      assetUrlProvider: (id, type) => (type === 'image' ? `images/${id}.png` : `svgs/${id}`),
+      assetUrlProvider: (id, type, data) => {
+        if (type === 'image') return `images/${id}.png`;
+        if (type === 'svg' && data) {
+          const encoded = Buffer.from(data).toString('base64');
+          return `data:image/svg+xml;base64,${encoded}`;
+        }
+        return `svgs/${id}`;
+      },
       debugEnabled: true,
     });
     lastResult = result;
@@ -657,7 +664,7 @@ app.post('/api/composition', async (req, res) => {
       try {
         if (renderRes.html) writeDebugHtml('render.before', renderRes.html);
         if (renderRes.debugHtml) writeDebugHtml('debug-overlay', renderRes.debugHtml);
-      } catch {}
+      } catch { }
     }
   } catch (error: any) {
     res.status(400).json({ error: error?.message || 'failed to render composition' });
@@ -665,7 +672,7 @@ app.post('/api/composition', async (req, res) => {
   }
 
   const post = normalizeHtml(renderRes.html);
-  
+
   try {
     const headLinks2 = buildHeadFontLinks(googleFontsUrl, chineseFontsUrls);
     const images = Array.isArray((lastResult as any)?.assets?.images) ? (lastResult as any).assets.images : [];
@@ -680,7 +687,7 @@ app.post('/api/composition', async (req, res) => {
     try {
       writeDebugHtml('render.after', post.html);
       // omit runtime logging of post-processing; data remains available in report
-    } catch {}
+    } catch { }
   }
 
   previewManager.update({
@@ -743,11 +750,11 @@ app.get('/api/files', (_req, res) => {
     if (!fs.existsSync(outputDir)) {
       return res.json([]);
     }
-    
+
     const files: any[] = [];
-    
+
     const entries = fs.readdirSync(outputDir, { withFileTypes: true });
-    
+
     for (const entry of entries) {
       if (entry.isFile()) {
         const ext = path.extname(entry.name).toLowerCase();
@@ -760,7 +767,7 @@ app.get('/api/files', (_req, res) => {
         }
       }
     }
-    
+
     res.json(files);
   } catch (error) {
     res.status(500).json({ error: 'Failed to list files' });
@@ -772,11 +779,11 @@ app.get('/api/files/:filename', (req, res) => {
     const filename = path.basename(req.params.filename);
     const outputDir = path.join(process.cwd(), 'output');
     const filePath = path.join(outputDir, filename);
-    
+
     if (!fs.existsSync(filePath)) {
       return res.status(404).json({ error: 'File not found' });
     }
-    
+
     const content = fs.readFileSync(filePath, 'utf8');
     res.json({ content, filename });
   } catch (error) {
@@ -867,49 +874,42 @@ app.get('/api/languages/:code', (req, res) => {
 
 app.get('/api/dsl/files', (_req, res) => {
   try {
-    const dslDir = path.join(process.cwd(), 'fixtures', 'dsl');
-    if (!fs.existsSync(dslDir)) {
-      return res.json([]);
-    }
-    const entries = fs.readdirSync(dslDir, { withFileTypes: true });
-    const files = entries
-      .filter(e => e.isFile() && e.name.endsWith('.html'))
-      .map(e => ({
-        name: e.name,
-        path: `dsl/${e.name}`
-      }));
-    res.json(files);
+    const { listDslEntries } = require('./utils/dsl');
+    const entries = listDslEntries();
+    res.json(entries);
   } catch (e: any) {
     res.status(500).json({ error: String(e?.message || e) });
   }
 });
 
-app.get('/api/dsl/:filename', (req, res) => {
+app.get('/api/dsl/:name', (req, res) => {
   try {
-    const filename = path.basename(req.params.filename);
-    if (!filename.endsWith('.html')) {
-      return res.status(400).json({ error: 'Only HTML files allowed' });
-    }
-    const dslDir = path.join(process.cwd(), 'fixtures', 'dsl');
-    const filePath = path.join(dslDir, filename);
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).json({ error: 'File not found' });
-    }
-    const content = fs.readFileSync(filePath, 'utf8');
-    res.json({ content, filename });
+    const { loadDslEntry, readDslHtml } = require('./utils/dsl');
+    const name = path.basename(req.params.name);
+    const entry = loadDslEntry(name);
+    const content = readDslHtml(entry);
+    res.json({ content, filename: name, baseHref: entry.baseHref });
   } catch (e: any) {
-    res.status(500).json({ error: String(e?.message || e) });
+    res.status(404).json({ error: String(e?.message || e) });
   }
 });
 
 app.post('/api/dsl/composition', async (req, res) => {
   try {
-    const { html } = req.body;
+    const { html, filename } = req.body;
     if (!html || typeof html !== 'string') {
       return res.status(400).json({ error: 'HTML content required' });
     }
     const { dslHtmlToComposition } = require('figma-html-bridge');
-    const composition = dslHtmlToComposition(html);
+    const { loadDslEntry } = require('./utils/dsl');
+
+    let basePath: string | undefined;
+    if (filename && typeof filename === 'string') {
+      const entry = loadDslEntry(filename);
+      basePath = entry.basePath;
+    }
+
+    const composition = dslHtmlToComposition(html, basePath);
     res.json({ composition });
   } catch (e: any) {
     res.status(500).json({ error: String(e?.message || e) });
@@ -926,6 +926,8 @@ app.use('/images', express.static(imagesRoot));
 const svgsRoot = path.join(process.cwd(), 'temp', 'svgs');
 app.use('/svgs', express.static(svgsRoot));
 app.use('/preview', express.static(PREVIEW_ASSETS_DIR));
+const fixturesRoot = path.join(process.cwd(), 'fixtures');
+app.use('/fixtures', express.static(fixturesRoot));
 app.use('/', express.static(publicDir, { extensions: ['html'] }));
 
 warmupChineseFontsMapping().finally(() => {

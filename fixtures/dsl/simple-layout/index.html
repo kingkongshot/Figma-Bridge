@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Simple Layout Demo - Bridge DSL</title>
+    <script type="module" src="/dsl/components/index.js"></script>
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            font-family: 'Inter', sans-serif;
+        }
+    </style>
+</head>
+<body>
+    <!-- 
+      Simple Layout Demo (Responsive)
+      Demonstrates: Layout (Row/Column), Gap, Padding, Fill
+      Refactored to use full viewport width/height and stretch alignment
+    -->
+
+    <bridge-frame 
+        name="SimpleLayoutDemo" 
+        viewport-width="1440" 
+        viewport-height="900" 
+        width="100vw" 
+        height="100vh"
+        fill="#F5F5F5" 
+        layout="COLUMN" 
+        align-main="CENTER" 
+        align-cross="CENTER" 
+        gap="20">
+
+        <bridge-text size="24" weight="700" color="#333333">Simple Layout Demo</bridge-text>
+        <bridge-text size="14" weight="400" color="#666666">此示例展示了基础布局能力：行/列布局、间距、内边距和填充。</bridge-text>
+
+        <!-- A Row of Cards -->
+        <bridge-frame name="CardRow" layout="ROW" gap="16" padding="20" fill="#FFFFFF" radius="8">
+            <bridge-frame width="100" height="100" fill="#2196F3" radius="4"></bridge-frame>
+            <bridge-frame width="100" height="100" fill="#4CAF50" radius="4"></bridge-frame>
+            <bridge-frame width="100" height="100" fill="#FFC107" radius="4"></bridge-frame>
+        </bridge-frame>
+
+        <bridge-text size="14" weight="400" color="#666666" style="margin-top: 20px;">Responsive & Grow Demo:</bridge-text>
+
+        <!-- Flexible Row with Grow Item (Migrated from responsive-root.html) -->
+        <bridge-frame 
+            name="FlexibleRow"
+            layout="ROW" 
+            gap="20" 
+            padding="30" 
+            fill="#FFFFFF" 
+            radius="12" 
+            width="90%" 
+            height="AUTO"
+            align-main="CENTER">
+            
+            <bridge-frame width="100" height="100" fill="#FF5252" radius="8"></bridge-frame>
+            <bridge-frame width="100" height="100" fill="#448AFF" radius="8"></bridge-frame>
+            
+            <!-- grow=1 takes remaining space -->
+            <bridge-frame grow="1" height="100" fill="#E0E0E0" radius="8" layout="COLUMN" align-main="CENTER" align-cross="CENTER">
+                <bridge-text size="14" color="#999">Flexible Space (Grow)</bridge-text>
+            </bridge-frame>
+        </bridge-frame>
+
+    </bridge-frame>
+</body>
+
+</html>

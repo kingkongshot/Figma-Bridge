@@ -844,14 +844,15 @@ async function loadDslFileContent(filename) {
 
     if (dslDirectFrame) {
       const baseUrl = window.location.origin;
-      const fullHtml = htmlContent.replace(/<head>/i, `<head><base href="${baseUrl}/">`);
+      const baseHref = data.baseHref || '/';
+      const fullHtml = htmlContent.replace(/<head>/i, `<head><base href="${baseUrl}${baseHref}">`);
       dslDirectFrame.setAttribute('srcdoc', fullHtml);
     }
 
     const compositionResponse = await fetch('/api/dsl/composition', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ html: htmlContent })
+      body: JSON.stringify({ html: htmlContent, filename })
     });
 
     if (!compositionResponse.ok) {
@@ -860,6 +861,12 @@ async function loadDslFileContent(filename) {
 
     const { composition } = await compositionResponse.json();
 
+    console.log('[DEBUG] Sending composition to /api/composition:', {
+      compositionType: typeof composition,
+      compositionKeys: composition ? Object.keys(composition) : null,
+      hasChildren: composition && composition.children ? composition.children.length : 0
+    });
+
     const renderResponse = await fetch('/api/composition', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -867,7 +874,13 @@ async function loadDslFileContent(filename) {
     });
 
     if (!renderResponse.ok) {
-      throw new Error('Failed to render composition');
+      const errorText = await renderResponse.text();
+      console.error('[DEBUG] Render failed:', {
+        status: renderResponse.status,
+        statusText: renderResponse.statusText,
+        errorBody: errorText
+      });
+      throw new Error(`Failed to render composition: ${renderResponse.status} - ${errorText}`);
     }
 
   } catch (error) {

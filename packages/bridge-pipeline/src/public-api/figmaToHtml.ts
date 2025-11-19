@@ -90,8 +90,8 @@ function applyAssetUrlProvider(htmlOrFragment: string, cssText: string, nodes: R
     return `${p1}${url}${p3}`;
   });
 
-  // Replace svg <img src="/svgs/<file>">
-  const svgRe = /(src=\")[^\"]*\/svgs\/([^\"]+)(\")/g;
+  // Replace svg <img src="svgs/<file>"> or <img src="/svgs/<file>">
+  const svgRe = /(src=\")(?:[^\"]*\/)?svgs\/([^\"]+)(\")/g;
   outHtml = outHtml.replace(svgRe, (_m: string, p1: string, file: string, p3: string) => {
     const data = svgMap.get(String(file));
     const url = provider(String(file), 'svg', data);

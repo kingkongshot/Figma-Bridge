@@ -1,8 +1,10 @@
 /**
- * Figma Bridge DSL Components
+ * Bridge DSL Components
  *
- * Web Components for declarative Figma design authoring
+ * Web Components for declarative design authoring
  */
 
-export { FigmaFrame } from './figma-frame.js';
-export { FigmaText } from './figma-text.js';
+export { BridgeFrame } from './bridge-frame.js';
+export { BridgeText } from './bridge-text.js';
+export { BridgeImage } from './bridge-image.js';
+export { BridgeSvg } from './bridge-svg.js';

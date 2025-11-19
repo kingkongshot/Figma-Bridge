@@ -7,6 +7,7 @@ import fs from 'fs';
 import path from 'path';
 import { figmaToHtml } from 'figma-html-bridge';
 import { warmupChineseFontsMapping } from '../utils/fonts';
+import { createAssetUrlProvider } from '../utils/assets';
 
 type AnyObj = Record<string, any>;
 
@@ -71,7 +72,10 @@ async function main() {
   const p1 = path.join(dir, `01_figma_raw.json`);
   const p3 = path.join(dir, `03_render.html`);
   writeJson(p1, composition);
-  const result = await figmaToHtml({ composition }, { assetUrlProvider: (id, type) => (type === 'image' ? `/images/${id}.png` : `/svgs/${id}`), debugEnabled: false });
+  const result = await figmaToHtml({ composition }, {
+    assetUrlProvider: createAssetUrlProvider(true),
+    debugEnabled: false
+  });
   const html = result.html;
   writeHtml(p3, html);
   console.log('IR and HTML generated. Inspect files:');

@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <title>Responsive Chat Interface - Figma DSL</title>
+    <script type="module" src="/dsl/components/index.js"></script>
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Main Container: fills viewport -->
+    <bridge-frame name="Chat Screen" viewport-width="1440" viewport-height="900" layout="vertical" gap="0" width="100vw"
+        height="100vh" align-main="MIN" align-cross="STRETCH" fill="#ffffff">
+
+        <!-- Header: fixed height -->
+        <bridge-frame name="Header" layout="horizontal" padding="16,24" gap="16" align-main="SPACE_BETWEEN"
+            align-cross="CENTER" fill="#ffffff" stroke="#e0e0e0" stroke-weight="1" stroke-align="INSIDE">
+
+            <!-- Left: Avatar + Info -->
+            <bridge-frame name="Person" layout="horizontal" gap="16" align-main="MIN" align-cross="CENTER">
+
+                <!-- Avatar -->
+                <bridge-image name="Avatar" width="48" height="48" radius="1000" mode="FILL" src="./assets/avatar.png">
+                </bridge-image>
+
+                <!-- Name and Status -->
+                <bridge-frame name="Info" layout="vertical" gap="2" align-main="MIN" align-cross="MIN">
+
+                    <bridge-text name="Name" color="#000000" size="16" weight="500">Helena Hills</bridge-text>
+
+                    <bridge-text name="Status" color="#828282" size="14" weight="400">Active 20m ago</bridge-text>
+                </bridge-frame>
+            </bridge-frame>
+
+            <!-- Right: Call Icons -->
+            <bridge-frame name="Actions" layout="horizontal" gap="24" align-main="MIN" align-cross="CENTER">
+
+                <bridge-svg name="Phone" width="24" height="24" opacity="1" src="./assets/phone.svg"></bridge-svg>
+
+                <bridge-svg name="Video" width="24" height="24" src="./assets/video.svg"></bridge-svg>
+            </bridge-frame>
+        </bridge-frame>
+
+        <!-- Messages Container: grows to fill available space -->
+        <bridge-frame name="Messages" layout="vertical" padding="24" gap="20" align-main="MIN" align-cross="MIN"
+            fill="#f8f8f8" grow>
+
+            <!-- Sent Bubbles (Right) -->
+            <bridge-frame name="Sent Group 1" layout="vertical" gap="8" align-main="MIN" align-cross="MAX"
+                self-align="MAX">
+
+                <bridge-frame name="Bubble" layout="horizontal" padding="12,16" fill="#000000" radius="16,16,4,16"
+                    align-main="MIN" align-cross="CENTER">
+                    <bridge-text name="Text" color="#ffffff" size="16" weight="400">No honestly I'm thinking of a career
+                        pivot</bridge-text>
+                </bridge-frame>
+
+                <bridge-frame name="Bubble" layout="horizontal" padding="12,16" fill="#000000" radius="16,16,4,16"
+                    align-main="MIN" align-cross="CENTER">
+                    <bridge-text name="Text" color="#ffffff" size="16" weight="400">This is the responsive chat
+                        template</bridge-text>
+                </bridge-frame>
+            </bridge-frame>
+
+            <!-- Date Separator -->
+            <bridge-frame name="Date" layout="horizontal" align-main="CENTER" align-cross="CENTER" self-align="STRETCH">
+                <bridge-text name="Date Text" color="#828282" size="14" weight="400">Nov 30, 2023, 9:41 AM</bridge-text>
+            </bridge-frame>
+
+            <!-- Received Bubbles (Left) -->
+            <bridge-frame name="Received Group 1" layout="vertical" gap="8" align-main="MIN" align-cross="MIN">
+
+                <bridge-frame name="Bubble" layout="horizontal" padding="12,16" fill="#e8e8e8" radius="24,16,16,4"
+                    align-main="MIN" align-cross="CENTER">
+                    <bridge-text name="Text" color="#000000" size="16" weight="400">Oh?</bridge-text>
+                </bridge-frame>
+
+                <bridge-frame name="Bubble" layout="horizontal" padding="12,16" fill="#e8e8e8" radius="24,16,16,4"
+                    align-main="MIN" align-cross="CENTER">
+                    <bridge-text name="Text" color="#000000" size="16" weight="400">Cool! Responsive layouts are
+                        amazing</bridge-text>
+                </bridge-frame>
+            </bridge-frame>
+
+        </bridge-frame>
+
+        <!-- Input Box: fixed height -->
+        <bridge-frame name="Input" layout="horizontal" padding="16,24" gap="16" align-main="SPACE_BETWEEN"
+            align-cross="CENTER" fill="#ffffff" stroke="#e0e0e0" stroke-weight="1" stroke-align="INSIDE">
+
+            <!-- Input Field -->
+            <bridge-text name="Placeholder" color="#999999" size="16" weight="400" grow>Enter your message</bridge-text>
+
+            <!-- Input Icons -->
+            <bridge-frame name="Icons" layout="horizontal" gap="16" align-main="MIN" align-cross="CENTER">
+
+                <bridge-svg name="Mic" width="24" height="24" src="./assets/mic.svg"></bridge-svg>
+
+                <bridge-svg name="Emoji" width="24" height="24" src="./assets/emoji.svg"></bridge-svg>
+
+                <bridge-svg name="Image" width="24" height="24" src="./assets/image.svg"></bridge-svg>
+            </bridge-frame>
+        </bridge-frame>
+
+    </bridge-frame>
+</body>
+
+</html>

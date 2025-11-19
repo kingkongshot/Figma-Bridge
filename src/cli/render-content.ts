@@ -7,6 +7,7 @@ import fs from 'fs';
 import path from 'path';
 import { figmaToHtml } from 'figma-html-bridge';
 import { warmupChineseFontsMapping } from '../utils/fonts';
+import { createAssetUrlProvider } from '../utils/assets';
 
 type AnyObj = Record<string, any>;
 
@@ -60,7 +61,10 @@ async function main() {
   // Keep parity with server: warm up fonts mapping but never fail
   try { await warmupChineseFontsMapping(); } catch {}
 
-  const result = await figmaToHtml({ composition }, { assetUrlProvider: (id, type) => (type === 'image' ? `images/${id}.png` : `svgs/${id}`), debugEnabled: false });
+  const result = await figmaToHtml({ composition }, {
+    assetUrlProvider: createAssetUrlProvider(false),
+    debugEnabled: false
+  });
   const outDir = path.join(process.cwd(), 'debug', 'logs', 'content');
   ensureCleanDir(outDir);
 

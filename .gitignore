@@ -13,7 +13,7 @@ tmp/
 
 # Debug files
 debug/
-fixtures/
+/fixtures/figma
 
 # Logs
 *.log
@@ -47,3 +47,4 @@ CLAUDE.local.md
 CLAUDE.md
 docs/
 .claude/
+.agent/

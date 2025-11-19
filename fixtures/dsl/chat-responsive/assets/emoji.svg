@@ -1,0 +1,14 @@
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <g transform="translate(1, 1)">
+    <path d="M11 21C16.5228 21 21 16.5228 21 11C21 5.47715 16.5228 1 11 1C5.47715 1 1 5.47715 1 11C1 16.5228 5.47715 21 11 21Z" stroke="#828282" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <g transform="translate(7, 13)">
+    <path d="M1.00006 1.00006C1.00006 1.00006 2.50006 3.00006 5.00006 3.00006C7.50006 3.00006 9.00006 1.00006 9.00006 1.00006" stroke="#828282" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <g transform="translate(8, 8)">
+    <path d="M1 1H1.01" stroke="#828282" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <g transform="translate(14, 8)">
+    <path d="M1 1H1.01" stroke="#828282" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>

@@ -160,7 +160,7 @@ function buildBackgroundLayers(node: FigmaNode, skipForText = false): { layers: 
   for (const f of rev) {
     const t = normUpper((f && f.type) || '');
     if (t === 'IMAGE' && f?.imageId) {
-      const url = `images/${f.imageId}.png`;
+      const url = f.imageId.startsWith('/') ? f.imageId : `images/${f.imageId}.png`;
       const scale = normUpper(f?.scaleMode) || 'FILL';
       let size: string | undefined;
       let position: string | undefined;
