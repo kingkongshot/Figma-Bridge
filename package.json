@@ -46,6 +46,7 @@
   },
   "dependencies": {
     "cors": "^2.8.5",
+    "css-to-tailwindcss": "^1.0.5",
     "express": "^4.18.3",
     "figma-html-bridge": "file:packages/bridge-pipeline",
     "html-to-image": "^1.11.13",
