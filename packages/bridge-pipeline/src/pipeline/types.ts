@@ -96,6 +96,8 @@ export type RenderBoxOptions = {
   omitPosition?: boolean;
   mode?: 'content' | 'debug';
   hasStroke?: boolean;
+  // 文本等场景：强制忽略 layout 派生的 width/height 尺寸，统一交给内容自然撑开
+  ignoreWidthHeight?: boolean;
 };
 export type RenderBoxConfig = {
   className: string;

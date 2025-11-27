@@ -79,6 +79,67 @@ function extractCssValue(css: string, property: string): string | undefined {
   return match ? match[1].trim() : undefined;
 }
 
+async function transformSpanInlineStyles(html: string, usedClasses?: Set<string>): Promise<string> {
+  if (!html || html.indexOf('<span') === -1 || html.indexOf('style=') === -1) return html;
+
+  let result = '';
+  let cursor = 0;
+  const tagRe = /<span\b[^>]*>/gi;
+  let m: RegExpExecArray | null;
+
+  while ((m = tagRe.exec(html))) {
+    const tagStart = m.index;
+    const tagEnd = html.indexOf('>', tagStart);
+    if (tagEnd === -1) break;
+
+    const originalTag = html.slice(tagStart, tagEnd + 1);
+    const attrsSource = originalTag.slice('<span'.length, -1);
+    const styleMatch = attrsSource.match(/\sstyle="([^"]*)"/i);
+    if (!styleMatch) continue;
+
+    // flush text before this <span>
+    result += html.slice(cursor, tagStart);
+    cursor = tagEnd + 1;
+
+    const originalStyle = styleMatch[1] || '';
+    const util = await cssToTailwindClasses(originalStyle, 'aggressive');
+    const spanClasses = util.classNames || [];
+    const remainingCss = (util.remainingCss || '').trim();
+
+    let newAttrs = attrsSource.replace(styleMatch[0], '');
+    const classMatch = newAttrs.match(/\sclass="([^"]*)"/i);
+    if (spanClasses.length) {
+      if (classMatch) {
+        const existing = classMatch[1] || '';
+        const set = new Set<string>(existing.split(/\s+/).filter(Boolean));
+        for (const c of spanClasses) set.add(c);
+        const combined = Array.from(set).join(' ');
+        newAttrs = newAttrs.replace(classMatch[0], ` class="${combined}"`);
+      } else {
+        newAttrs += ` class="${spanClasses.join(' ')}"`;
+      }
+      if (usedClasses) {
+        spanClasses.forEach((c) => usedClasses.add(c));
+      }
+    }
+
+    const cssClean = remainingCss.replace(/;\s*$/,'' );
+    if (cssClean) {
+      newAttrs += ` style="${cssClean}"`;
+    }
+
+    const newTag = `<span${newAttrs}>`;
+    result += newTag;
+
+    tagRe.lastIndex = cursor;
+  }
+
+  if (cursor === 0) return html;
+  result += html.slice(cursor);
+  return result;
+}
+
+
 function escAttr(val: string): string {
   return val
     .replace(/&/g, '&amp;')
@@ -149,7 +210,6 @@ function layoutToCss(layout: RenderNodeIR['layout']): {
     partsSize.push(`flex-grow:${layout.flexGrow};`);
     if (typeof layout.flexShrink === 'number' && layout.flexShrink === 0) partsSize.push('flex-shrink:0;');
     partsSize.push(`flex-basis:${typeof layout.flexBasis === 'number' ? fmtPx(layout.flexBasis) : (layout.flexBasis || '0')};`);
-    partsSize.push('min-width:0;min-height:0;');
   } else if (typeof layout.flexShrink === 'number' && layout.flexShrink === 0) {
     partsSize.push('flex-shrink:0;');
   }
@@ -311,12 +371,30 @@ function renderWrapperBox(cfg: RenderBoxConfig): string {
   const cssSeg = layoutToCss(layout);
   const { outerCss, innerCss } = splitBoxCssForWrapper(boxCss);
 
-  const posPart = cssSeg.positioningCss;
+  let posPart = cssSeg.positioningCss;
+
+  // Drop positioning CSS when equivalent Tailwind classes exist
+  if (opts?.mode === 'content' && className && posPart) {
+    const tokens = new Set((className || '').split(/\s+/).filter(Boolean));
+    function dropPos(prop: string) {
+      posPart = posPart.replace(new RegExp(`(^|;)\\s*${prop}\\s*:[^;]+;?`, 'gi'), '$1');
+    }
+    // position: drop when absolute/relative/fixed/sticky class exists
+    if (tokens.has('absolute') || tokens.has('relative') || tokens.has('fixed') || tokens.has('sticky')) {
+      dropPos('position');
+    }
+    // left/top/right/bottom: drop when corresponding class exists
+    if ([...tokens].some(c => /^left-\[.+\]$/.test(c) || c === 'left-0' || c === 'left-auto')) dropPos('left');
+    if ([...tokens].some(c => /^top-\[.+\]$/.test(c) || c === 'top-0' || c === 'top-auto')) dropPos('top');
+    if ([...tokens].some(c => /^right-\[.+\]$/.test(c) || c === 'right-0' || c === 'right-auto')) dropPos('right');
+    if ([...tokens].some(c => /^bottom-\[.+\]$/.test(c) || c === 'bottom-0' || c === 'bottom-auto')) dropPos('bottom');
+  }
+
   const baseStart = `${posPart}${opts?.outerOverflowVisible ? 'overflow:visible;' : ''}`;
   let outer = `${baseStart}${cssSeg.sizingCss}${outerCss}`;
 
   const containerCssForInner = layout.display === 'flex' ? cssSeg.containerCss : '';
-  
+
   // Why: wrapper carries inner content size used for centering
   type WrapperInfo = { contentWidth: number; contentHeight: number; centerStrategy?: 'inset' | 'translate' };
   const wrapper = (layout as any).wrapper as WrapperInfo | undefined;
@@ -325,7 +403,7 @@ function renderWrapperBox(cfg: RenderBoxConfig): string {
     throw new Error(`renderWrapperBox: missing wrapper.centerStrategy for node ${id}`);
   }
   const { contentWidth, contentHeight } = wrapper;
-  
+
   let inner = '';
   if (strategy === 'inset') {
     inner = `position:absolute;left:0;top:0;right:0;bottom:0;margin:auto;` +
@@ -412,21 +490,44 @@ function renderSingleBox(cfg: RenderBoxConfig): string {
   const cssSeg = layoutToCss(adjustedLayout);
   const isIdentity = t.a === 1 && t.b === 0 && t.c === 0 && t.d === 1;
   const transformPart = isIdentity ? '' : cssSeg.transformCss;
-  const posPart = opts?.omitPosition ? '' : cssSeg.positioningCss;
+  let posPart = opts?.omitPosition ? '' : cssSeg.positioningCss;
+
+  // Drop positioning CSS when equivalent Tailwind classes exist
+  if (opts?.mode === 'content' && className && posPart) {
+    const tokens = new Set((className || '').split(/\s+/).filter(Boolean));
+    function dropPos(prop: string) {
+      posPart = posPart.replace(new RegExp(`(^|;)\\s*${prop}\\s*:[^;]+;?`, 'gi'), '$1');
+    }
+    // position: drop when absolute/relative/fixed/sticky class exists
+    if (tokens.has('absolute') || tokens.has('relative') || tokens.has('fixed') || tokens.has('sticky')) {
+      dropPos('position');
+    }
+    // left/top/right/bottom: drop when corresponding class exists
+    if ([...tokens].some(c => /^left-\[.+\]$/.test(c) || c === 'left-0' || c === 'left-auto')) dropPos('left');
+    if ([...tokens].some(c => /^top-\[.+\]$/.test(c) || c === 'top-0' || c === 'top-auto')) dropPos('top');
+    if ([...tokens].some(c => /^right-\[.+\]$/.test(c) || c === 'right-0' || c === 'right-auto')) dropPos('right');
+    if ([...tokens].some(c => /^bottom-\[.+\]$/.test(c) || c === 'bottom-0' || c === 'bottom-auto')) dropPos('bottom');
+  }
   const baseStart = `${posPart}${transformPart}`;
 
   let sizeCss = cssSeg.sizingCss;
-  if (opts?.mode === 'content' && className) {
-    const tokens = new Set((className || '').split(/\s+/).filter(Boolean));
-    function drop(prop: string) {
-      sizeCss = sizeCss.replace(new RegExp(`(^|;)\\s*${prop}\\s*:[^;]+;?`, 'gi'), '$1');
+  if (opts?.mode === 'content') {
+    if (opts.ignoreWidthHeight) {
+      // 文本容器：无论 layout 尺寸如何，一律移除 size 段中的 width/height
+      sizeCss = sizeCss.replace(/(^|;)\s*width\s*:[^;]+;?/gi, '$1');
+      sizeCss = sizeCss.replace(/(^|;)\s*height\s*:[^;]+;?/gi, '$1');
+    } else if (className) {
+      const tokens = new Set((className || '').split(/\s+/).filter(Boolean));
+      function drop(prop: string) {
+        sizeCss = sizeCss.replace(new RegExp(`(^|;)\\s*${prop}\\s*:[^;]+;?`, 'gi'), '$1');
+      }
+      if ([...tokens].some(c => /^w-\[.+\]$/.test(c) || c === 'w-full')) drop('width');
+      if ([...tokens].some(c => /^h-\[.+\]$/.test(c) || c === 'h-full')) drop('height');
+      if (tokens.has('shrink-0')) drop('flex-shrink');
+      if (tokens.has('self-stretch') || tokens.has('self-start') || tokens.has('self-end') || tokens.has('self-center') || tokens.has('self-baseline')) drop('align-self');
+      if (tokens.has('grow')) drop('flex-grow');
+      if ([...tokens].some(c => c === 'basis-0' || c === 'basis-auto')) drop('flex-basis');
     }
-    if ([...tokens].some(c => /^w-\[.+\]$/.test(c))) drop('width');
-    if ([...tokens].some(c => /^h-\[.+\]$/.test(c))) drop('height');
-    if (tokens.has('shrink-0')) drop('flex-shrink');
-    if (tokens.has('self-stretch') || tokens.has('self-start') || tokens.has('self-end') || tokens.has('self-center') || tokens.has('self-baseline')) drop('align-self');
-    if (tokens.has('grow')) drop('flex-grow');
-    if ([...tokens].some(c => c === 'basis-0' || c === 'basis-auto')) drop('flex-basis');
   }
 
   const containerPart = opts?.mode === 'debug' ? cssSeg.containerCss : '';
@@ -461,7 +562,7 @@ async function renderFrameNode(ctx: RenderContext): Promise<string> {
   boxCss = optimizeBoxCss(boxCss, cssCtx);
   const hasWrapper = !!(layout as any).wrapper;
   const utilClasses: string[] = [];
-  if (ctx.mode === 'content' && !hasWrapper) {
+  if (ctx.mode === 'content') {
     const util = await layoutToTailwindClasses(layout, boxCss || '');
     if (util.classNames.length) utilClasses.push(...util.classNames);
     const hasCssWidth = typeof layout.cssWidth === 'string';
@@ -508,6 +609,8 @@ async function renderFrameNode(ctx: RenderContext): Promise<string> {
     if (res.className) classNames.push(res.className);
     boxCss = res.newCss;
   }
+	  classNames = Array.from(new Set(classNames));
+
   const className = classNames.join(' ');
   // Why: for boxes with visible geometry (padding/bg/radius) force layout size to keep debug overlay aligned; others let children size naturally
   let debugOverrideSize = false;
@@ -534,7 +637,7 @@ async function renderTextNode(ctx: RenderContext): Promise<string> {
   if (!ctx.irNode) throw new Error('renderTextNode: irNode missing');
   // Why: keep text content in debug mode for accurate flexbox sizing, but make it invisible
   const rawTextHtml = (ctx.irNode.content.type === 'text' ? ctx.irNode.content.html : '');
-  const textHtml = ctx.mode === 'debug'
+  let textHtml = ctx.mode === 'debug'
     ? (rawTextHtml ? `<span style="visibility:hidden;">${rawTextHtml}</span>` : '')
     : rawTextHtml;
   let boxCss = ctx.mode === 'debug' ? extractLayoutCssForDebug(ctx.irNode.style.boxCss) : ctx.irNode.style.boxCss;
@@ -550,31 +653,22 @@ async function renderTextNode(ctx: RenderContext): Promise<string> {
   if (ctx.mode === 'content') {
     const layout = ctx.irNode.layout;
     const util = await layoutToTailwindClasses(layout, boxCss || '');
-    if (util.classNames.length) utilClassesT.push(...util.classNames);
 
-    // Why: respect textAutoResize: skip width/height classes when text uses auto sizing
-    const hasAutoWidth = /width\s*:\s*auto\s*(;|$)/i.test(boxCss || '');
-    const hasAutoHeight = /height\s*:\s*auto\s*(;|$)/i.test(boxCss || '');
+    // 文本容器：不保留任何显式宽高类，统一交给内容自然撑开
+    const filteredClasses = util.classNames.filter((c: string) => {
+      if (c === 'w-full' || c === 'h-full') return false;
+      if (/^w-\[.+\]$/.test(c)) return false;
+      if (/^h-\[.+\]$/.test(c)) return false;
+      return true;
+    });
+    if (filteredClasses.length) utilClassesT.push(...filteredClasses);
 
-    const hasCssWidth = typeof layout.cssWidth === 'string';
-    const hasCssHeight = typeof layout.cssHeight === 'string';
-    const w = layout.width; const h = layout.height;
-    if (!hasCssWidth && typeof w === 'number' && !hasAutoWidth && shouldUseWidthClass(w, ctx.sizeFreq)) {
-      const cw = `w-[${Math.round(w*100)/100}px]`;
-      utilClassesT.push(cw);
-      if (ctx.usedClasses) ctx.usedClasses.add(cw);
-    }
-    if (!hasCssHeight && typeof h === 'number' && !hasAutoHeight && shouldUseHeightClass(h, ctx.sizeFreq)) {
-      const ch = `h-[${Math.round(h*100)/100}px]`;
-      utilClassesT.push(ch);
-      if (ctx.usedClasses) ctx.usedClasses.add(ch);
-    }
     boxCss = util.remainingCss;
-    if (ctx.usedClasses && util.classNames.length) {
-      util.classNames.forEach((c: string) => ctx.usedClasses!.add(c));
+    if (ctx.usedClasses && filteredClasses.length) {
+      filteredClasses.forEach((c: string) => ctx.usedClasses!.add(c));
     }
   }
-  
+
   if (ctx.mode === 'debug') {
     var classNames: string[] = ['debug-box'];
   } else {
@@ -589,6 +683,13 @@ async function renderTextNode(ctx: RenderContext): Promise<string> {
     if (res.className) classNames.push(res.className);
     boxCss = res.newCss;
   }
+
+  if (ctx.mode === 'content' && textHtml) {
+    textHtml = await transformSpanInlineStyles(textHtml, ctx.usedClasses);
+  }
+
+	classNames = Array.from(new Set(classNames));
+
   const className = classNames.join(' ');
   const hasWrapper = !!(ctx.irNode.layout as any).wrapper;
   const debugOverrideSize = false;
@@ -600,7 +701,7 @@ async function renderTextNode(ctx: RenderContext): Promise<string> {
     layout: ctx.irNode.layout,
     boxCss,
     innerContent: textHtml,
-    options: { innerClassName: ctx.mode === 'debug' ? 'debug-box' : undefined, debugOverrideSize, omitPosition, mode: ctx.mode, hasStroke }
+    options: { innerClassName: ctx.mode === 'debug' ? 'debug-box' : undefined, debugOverrideSize, omitPosition, mode: ctx.mode, hasStroke, ignoreWidthHeight: ctx.mode === 'content' }
   });
 }
 
@@ -609,7 +710,7 @@ async function renderSvgNode(ctx: RenderContext): Promise<string> {
   const svgFile = (ctx.irNode as any).svgFile || null;
   const svgContent = (ctx.irNode as any).svgContent || '';
   const wantsShape = ctx.mode === 'debug' && typeof svgContent === 'string' && svgContent.trim().length > 0;
-  
+
   let className = '';
   if (ctx.mode === 'debug') {
     className = wantsShape ? 'debug-svg shape-only' : 'debug-svg';
@@ -624,9 +725,9 @@ async function renderSvgNode(ctx: RenderContext): Promise<string> {
   const placeholder = (ctx.mode === 'debug' && svgFile && !wantsShape)
     ? `<div class="debug-svg-shape" data-svg-file="${svgFile}" style="position:absolute;left:0;top:0;right:0;bottom:0;width:100%;height:100%;pointer-events:auto;"></div>`
     : '';
-  
+
   let finalContentHtml = (ctx.mode === 'content')
-    ? (svgFile ? `<img src="svgs/${svgFile}" alt="" style="display:block;width:100%;height:100%;" />` : '')
+    ? (svgFile ? `<img class="svg-content" src="svgs/${svgFile}" alt="" />` : '')
     : (wantsShape ? sanitizeSvgForOutline(svgContent) : placeholder);
 
   let itemCss = '';
@@ -648,8 +749,8 @@ async function renderSvgNode(ctx: RenderContext): Promise<string> {
       itemCss += 'overflow:hidden;';
     }
   }
-  if (ctx.mode === 'content' && itemCss) {
-    const util = await cssToTailwindClasses(itemCss);
+  if (ctx.mode === 'content') {
+    const util = await layoutToTailwindClasses(ctx.irNode.layout, itemCss || '');
     if (util.classNames.length) {
       className += ' ' + util.classNames.join(' ');
     }
@@ -686,14 +787,14 @@ async function renderShapeNode(ctx: RenderContext): Promise<string> {
   boxCss = optimizeBoxCss(boxCss, cssCtx);
   const utilClassesS: string[] = [];
   if (ctx.mode === 'content') {
-    const util = await cssToTailwindClasses(boxCss);
+    const util = await layoutToTailwindClasses(ctx.irNode.layout, boxCss || '');
     if (util.classNames.length) utilClassesS.push(...util.classNames);
     boxCss = util.remainingCss;
     if (ctx.usedClasses && util.classNames.length) {
       util.classNames.forEach((c) => ctx.usedClasses!.add(c));
     }
   }
-  
+
   if (ctx.mode === 'debug') {
     var classNames: string[] = ['debug-box'];
   } else {
@@ -709,6 +810,8 @@ async function renderShapeNode(ctx: RenderContext): Promise<string> {
     if (res.className) classNames.push(res.className);
     boxCss = res.newCss;
   }
+	classNames = Array.from(new Set(classNames));
+
   const className = classNames.join(' ');
   const hasWrapper = !!(ctx.irNode.layout as any).wrapper;
   const debugOverrideSize = ctx.mode === 'debug' ? !hasWrapper : false;
@@ -731,7 +834,7 @@ async function renderNodeUnified(irNode: RenderNodeIR, ctx: RenderContext): Prom
   return renderShapeNode(ctx);
 }
 
- 
+
 function wrapInDocument(config: DocumentConfig): string {
   const head = buildHtmlHead(config);
   const body = buildHtmlBody(config);
@@ -868,7 +971,7 @@ export async function createPreviewHtml(
     debugEnabled
   );
 
-  
+
   const overlayStr = debugEnabled ? debugHtml.join('\n') : '';
 
   const baseStyles = buildBaseStyles();
