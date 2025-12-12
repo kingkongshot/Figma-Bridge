@@ -80,8 +80,6 @@ type PreviewData = {
   debugCss: string;
   baseWidth: number;
   baseHeight: number;
-  // Optional: alternative HTML used for DSL compare views (no extra viewport padding).
-  compareHtml?: string;
 };
 type PreviewState = PreviewData | null;
 
@@ -108,7 +106,6 @@ class PreviewManager {
       debugCss: preview.debugCss,
       baseWidth: preview.baseWidth,
       baseHeight: preview.baseHeight,
-      compareHtml: preview.compareHtml,
     });
   }
 }
@@ -400,7 +397,6 @@ app.get('/events', (req, res) => {
     latestDebugCss: cur.debugCss,
     latestBaseWidth: cur.baseWidth,
     latestBaseHeight: cur.baseHeight,
-    latestCompareHtml: cur.compareHtml,
   } : {};
   res.write(`data: ${JSON.stringify(snap)}\n\n`);
 
@@ -596,7 +592,6 @@ app.post('/api/composition', async (req, res) => {
   let renderRes: { html: string; baseWidth: number; baseHeight: number; renderUnion: any; debugHtml: string; debugCss: string };
   let lastResult: any;
   let irResult: { nodes: any[]; fontMeta?: any } | null = null;
-  let compareHtml: string | undefined;
   // Fonts: compute once and reuse for preview + export
   let googleFontsUrl: string | null = null;
   let chineseFontsUrls: string[] = [];
@@ -656,10 +651,6 @@ app.post('/api/composition', async (req, res) => {
     // Preview viewport (with 4px padding for debug overlay)
     const previewWrapper = buildViewportWrapper(result.html, bounds, renderUnion, 4, headLinks);
 
-    // Compare viewport (no padding for pixel-perfect comparison)
-    const compareWrapper = buildViewportWrapper(result.html, bounds, renderUnion, 0, headLinks);
-    compareHtml = compareWrapper.html;
-
     renderRes = {
       html: previewWrapper.html,
       baseWidth: previewWrapper.viewportWidth,
@@ -706,7 +697,6 @@ app.post('/api/composition', async (req, res) => {
     debugCss: renderRes.debugCss,
     baseWidth: renderRes.baseWidth,
     baseHeight: renderRes.baseHeight,
-    compareHtml,
   });
   res.status(204).end();
 });
@@ -875,50 +865,6 @@ app.get('/api/languages/:code', (req, res) => {
     const raw = fs.readFileSync(file, 'utf8');
     const obj = JSON.parse(raw);
     res.json(obj);
-  } catch (e: any) {
-    res.status(500).json({ error: String(e?.message || e) });
-  }
-});
-
-app.get('/api/dsl/files', (_req, res) => {
-  try {
-    const { listDslEntries } = require('./utils/dsl');
-    const entries = listDslEntries();
-    res.json(entries);
-  } catch (e: any) {
-    res.status(500).json({ error: String(e?.message || e) });
-  }
-});
-
-app.get('/api/dsl/:name', (req, res) => {
-  try {
-    const { loadDslEntry, readDslHtml } = require('./utils/dsl');
-    const name = path.basename(req.params.name);
-    const entry = loadDslEntry(name);
-    const content = readDslHtml(entry);
-    res.json({ content, filename: name, baseHref: entry.baseHref });
-  } catch (e: any) {
-    res.status(404).json({ error: String(e?.message || e) });
-  }
-});
-
-app.post('/api/dsl/composition', async (req, res) => {
-  try {
-    const { html, filename } = req.body;
-    if (!html || typeof html !== 'string') {
-      return res.status(400).json({ error: 'HTML content required' });
-    }
-    const { dslHtmlToComposition } = require('figma-html-bridge');
-    const { loadDslEntry } = require('./utils/dsl');
-
-    let basePath: string | undefined;
-    if (filename && typeof filename === 'string') {
-      const entry = loadDslEntry(filename);
-      basePath = entry.basePath;
-    }
-
-    const composition = dslHtmlToComposition(html, basePath);
-    res.json({ composition });
   } catch (e: any) {
     res.status(500).json({ error: String(e?.message || e) });
   }

@@ -26,19 +26,13 @@ const sidebarToggleBtn = document.getElementById('sidebarToggle');
       const activitySettingsBtn = document.getElementById('activitySettingsBtn');
       const filesBtn = document.getElementById('filesBtn');
       const layersBtn = document.getElementById('layersBtn');
-      const dslBtn = document.getElementById('dslBtn');
       const layersView = document.getElementById('layersView');
       const filesView = document.getElementById('filesView');
-      const dslSidebarView = document.getElementById('dslSidebarView');
       const settingsView = document.getElementById('settingsView');
       const canvasView = document.getElementById('canvasView');
       const codeView = document.getElementById('codeView');
-      const dslContentView = document.getElementById('dslContentView');
       const settingsContentView = document.getElementById('settingsContentView');
       const fileTree = document.getElementById('fileTree');
-      const dslFileTree = document.getElementById('dslFileTree');
-      const dslDirectFrame = document.getElementById('dslDirectFrame');
-      const dslPipelineFrame = document.getElementById('dslPipelineFrame');
       const codeContent = document.getElementById('codeContent');
       const codeFilename = document.getElementById('codeFilename');
       const settingsNav = document.getElementById('settingsNav');
@@ -55,7 +49,6 @@ const sidebarToggleBtn = document.getElementById('sidebarToggle');
 
 const state = {
         html: null,
-        compareHtml: null,
         debugHtml: null,
         debugCss: null,
         baseWidth: null,
@@ -70,8 +63,6 @@ const state = {
         currentView: 'layers',
         files: [],
         selectedFile: null,
-        dslFiles: [],
-        selectedDslFile: null,
         debugMode: false
       };
 
@@ -105,21 +96,6 @@ const VIEW_CONFIG = {
             firstHtmlItem.click();
           }
         }
-      }
-      mainElement.classList.remove('sidebar-collapsed');
-      mainElement.classList.add('properties-collapsed');
-      state.sidebarCollapsed = false;
-      state.propertiesCollapsed = true;
-    }
-  },
-  dsl: {
-    btn: dslBtn,
-    sidebar: dslSidebarView,
-    content: dslContentView,
-    showProperties: false,
-    onEnter: () => {
-      if (state.dslFiles.length === 0) {
-        loadDslFiles();
       }
       mainElement.classList.remove('sidebar-collapsed');
       mainElement.classList.add('properties-collapsed');
@@ -170,11 +146,6 @@ function update(changes = {}) {
             previewFrame.removeEventListener('load', onLoad);
           };
           previewFrame.addEventListener('load', onLoad);
-
-          if (state.currentView === 'dsl' && dslPipelineFrame) {
-            const pipelineHtml = state.compareHtml || state.html;
-            dslPipelineFrame.setAttribute('srcdoc', pipelineHtml);
-          }
         }
   if (changes.ir) {
     buildLayers(
@@ -199,7 +170,7 @@ function update(changes = {}) {
 
 function mergePayloadIntoState(payload, keyPrefix = '') {
   const changes = {};
-  const baseKeys = ['html', 'compareHtml', 'debugHtml', 'debugCss', 'composition', 'ir', 'baseWidth', 'baseHeight'];
+  const baseKeys = ['html', 'debugHtml', 'debugCss', 'composition', 'ir', 'baseWidth', 'baseHeight'];
   const keys = keyPrefix
     ? baseKeys.map(k => keyPrefix + k.charAt(0).toUpperCase() + k.slice(1))
     : baseKeys;
@@ -349,15 +320,6 @@ function injectDebugIntoFrame(previewFrame, state) {
         }
       }
 
-      function isDslComposition() {
-        try {
-          const comp = (state && state.composition) || null;
-          return !!(comp && comp._bridgeSource === 'dsl');
-        } catch {
-          return false;
-        }
-      }
-
       function resolveSnapshotContext() {
         if (!previewFrame) {
           console.log('[Snapshot] No iframe element');
@@ -379,12 +341,7 @@ function injectDebugIntoFrame(previewFrame, state) {
           setTimeout(captureHtmlRender, 500);
           return null;
         }
-        let target = viewport;
-        if (isDslComposition()) {
-          const comp = doc.querySelector('.composition');
-          if (comp) target = comp;
-        }
-        return { win, doc, viewport: target };
+        return { win, doc, viewport };
       }
 
       function ensureHtmlToImageLoaded() {
@@ -834,131 +791,11 @@ async function loadFileContent(filePath) {
   }
 }
 
-async function loadDslFiles() {
-  try {
-    const response = await fetch('/api/dsl/files');
-    const files = await response.json();
-    state.dslFiles = files;
-    renderDslFileTree(files);
-  } catch (error) {
-    console.error('Failed to load DSL files:', error);
-    if (dslFileTree) {
-      dslFileTree.innerHTML = '<div class="empty">Failed to load DSL files</div>';
-    }
-  }
-}
-
-function renderDslFileTree(files) {
-  if (!dslFileTree) return;
-
-  if (files.length === 0) {
-    dslFileTree.innerHTML = '<div class="empty">No DSL files found</div>';
-    return;
-  }
-
-  dslFileTree.innerHTML = '';
-
-  files.forEach(file => {
-    const item = document.createElement('div');
-    item.className = 'file-item';
-    item.dataset.file = file.path;
-    item.innerHTML = `
-      <div class="file-item-content">
-        <img src="/icons/file-html.svg" alt="HTML" class="file-icon">
-        <span class="file-name">${file.name}</span>
-      </div>
-    `;
-
-    item.addEventListener('click', () => {
-      dslFileTree.querySelectorAll('.file-item').forEach(i => i.classList.remove('active'));
-      item.classList.add('active');
-      loadDslFileContent(file.name);
-    });
-
-    dslFileTree.appendChild(item);
-  });
-
-  requestAnimationFrame(() => {
-    if (files.length > 0) {
-      const firstItem = dslFileTree.querySelector('.file-item');
-      if (firstItem) {
-        firstItem.click();
-      }
-    }
-  });
-}
-
-async function loadDslFileContent(filename) {
-  try {
-    state.selectedDslFile = filename;
-
-    const response = await fetch(`/api/dsl/${encodeURIComponent(filename)}`);
-    const data = await response.json();
-    const htmlContent = data.content;
-
-    if (dslDirectFrame) {
-      const baseUrl = window.location.origin;
-      const baseHref = data.baseHref || '/';
-      const fullHtml = htmlContent.replace(/<head>/i, `<head><base href="${baseUrl}${baseHref}">`);
-      dslDirectFrame.setAttribute('srcdoc', fullHtml);
-    }
-
-    const compositionResponse = await fetch('/api/dsl/composition', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ html: htmlContent, filename })
-    });
-
-    if (!compositionResponse.ok) {
-      throw new Error('Failed to convert DSL to composition');
-    }
-
-    const { composition } = await compositionResponse.json();
-
-    console.log('[DEBUG] Sending composition to /api/composition:', {
-      compositionType: typeof composition,
-      compositionKeys: composition ? Object.keys(composition) : null,
-      hasChildren: composition && composition.children ? composition.children.length : 0
-    });
-
-    const compositionForRender = composition && typeof composition === 'object'
-      ? { ...composition, _bridgeSource: 'dsl' }
-      : composition;
-
-    const renderResponse = await fetch('/api/composition', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ composition: compositionForRender })
-    });
-
-    if (!renderResponse.ok) {
-      const errorText = await renderResponse.text();
-      console.error('[DEBUG] Render failed:', {
-        status: renderResponse.status,
-        statusText: renderResponse.statusText,
-        errorBody: errorText
-      });
-      throw new Error(`Failed to render composition: ${renderResponse.status} - ${errorText}`);
-    }
-
-  } catch (error) {
-    console.error('Failed to load DSL file:', error);
-  }
-}
-
 async function loadConfig() {
   try {
     const response = await fetch('/api/config');
     const config = await response.json();
     state.debugMode = config.debugMode;
-
-    if (dslBtn) {
-      if (config.debugMode) {
-        dslBtn.classList.remove('hidden');
-      } else {
-        dslBtn.classList.add('hidden');
-      }
-    }
   } catch (error) {
     console.error('Failed to load config:', error);
   }
