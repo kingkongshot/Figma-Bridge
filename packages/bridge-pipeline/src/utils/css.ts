@@ -2,6 +2,7 @@ import { mapEnum, normUpper } from './enum';
 import { buildFontStack } from './fonts';
 import { computeBorderRadius, type RadiiData } from './borderRadius';
 import { dimensionToNumber } from './dimension';
+import { cssToTailwindClasses } from './tailwind-mapper';
 import type {
   FigmaGradientPaint,
   FigmaImagePaint,
@@ -417,6 +418,36 @@ export function renderTextSegments(text: FigmaText): string {
   // 不再额外包一层 div；让 span 自然 inline 换行，<br> 在 span 内即可生效
   const result = parts.join('');
   return result;
+}
+
+// Async version: converts inline styles to Tailwind classes at generation time (upstream)
+export async function renderTextSegmentsWithClasses(
+  text: FigmaText,
+  usedClasses?: Set<string>
+): Promise<string> {
+  if (!text || typeof text.characters !== 'string') return '';
+  const chars = text.characters;
+  const segments = Array.isArray(text.segments) ? text.segments : [];
+  if (segments.length === 0) return escapeHtml(chars).replace(/\n/g, '<br>');
+  const parts: string[] = [];
+  for (const seg of segments) {
+    const start = seg.start || 0;
+    const end = seg.end || chars.length;
+    const slice = chars.slice(start, end);
+    const css = segmentToInlineCss(seg);
+    const html = escapeHtml(slice).replace(/\n/g, '<br>');
+    // Convert to Tailwind classes using aggressive strategy
+    const util = await cssToTailwindClasses(css, 'aggressive');
+    if (util.classNames.length > 0) {
+      if (usedClasses) util.classNames.forEach(c => usedClasses.add(c));
+      const classAttr = `class="${util.classNames.join(' ')}"`;
+      const styleAttr = util.remainingCss ? ` style="${util.remainingCss}"` : '';
+      parts.push(`<span ${classAttr}${styleAttr}>${html}</span>`);
+    } else {
+      parts.push(`<span style="${css}">${html}</span>`);
+    }
+  }
+  return parts.join('');
 }
 
 // Why: Figma blur radii roughly halve in CSS (e.g., 30px → 15px)

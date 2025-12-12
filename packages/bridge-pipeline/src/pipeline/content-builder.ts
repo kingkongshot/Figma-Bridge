@@ -6,7 +6,7 @@ import { matInv, matMul } from '../utils/matrix';
 import { collectBorderRadiusCss, buildMaskCss, hasMaskImageFill } from '../utils/css';
 import { computeEffectsMode, getInheritedShadows } from '../utils/effects-mode';
 import type { ShadowEffect } from '../utils/css';
-import { renderTextSegments } from '../utils/css';
+import { renderTextSegments, renderTextSegmentsWithClasses } from '../utils/css';
 import { nodeToIR } from './ir';
 import type { FigmaNode } from '../types/figma';
 

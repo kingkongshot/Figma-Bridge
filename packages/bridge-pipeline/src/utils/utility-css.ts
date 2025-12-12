@@ -42,6 +42,11 @@ export function buildUtilityCssSelective(classes: Iterable<string>, scope?: stri
     'basis-auto': `${pre}.basis-auto{flex-basis:auto;}`,
     'w-auto': `${pre}.w-auto{width:auto;}`,
     'h-auto': `${pre}.h-auto{height:auto;}`,
+    'min-w-0': `${pre}.min-w-0{min-width:0px;}`,
+    'min-h-0': `${pre}.min-h-0{min-height:0px;}`,
+    // position
+    'absolute': `${pre}.absolute{position:absolute;}`,
+    'relative': `${pre}.relative{position:relative;}`,
     'box-border': `${pre}.box-border{box-sizing:border-box;}`,
     'box-content': `${pre}.box-content{box-sizing:content-box;}`,
     'text-left': `${pre}.text-left{text-align:left;}`,
@@ -200,6 +205,15 @@ export function buildUtilityCssSelective(classes: Iterable<string>, scope?: stri
       continue;
     }
   }
+  // left/top arbitrary: left-[Xpx], top-[Xpx] (支持负值)
+  for (const c of set) {
+    const m = c.match(/^(left|top)-\[(-?\d+(?:\.\d+)?)px\]$/);
+    if (m) {
+      const prop = m[1];
+      const val = parseFloat(m[2]);
+      if (isFinite(val)) push(`${pre}.${escClassForSelector(c)}{${prop}:${val}px;}`);
+    }
+  }
   // padding
   type SpacingRule = { pattern: RegExp; props: string[]; negative?: boolean };
   const paddingRules: SpacingRule[] = [
@@ -291,6 +305,110 @@ export function buildUtilityCssSelective(classes: Iterable<string>, scope?: stri
       const decls = rule.props.map(p => `${p}:${value}`).join(';');
       push(`${pre}.${escClassForSelector(c)}{${decls};}`);
       break;
+    }
+  }
+
+  // Color classes: text-[#xxx] or text-[rgba(...)]
+  for (const c of set) {
+    const hex = c.match(/^text-\[(#[0-9a-fA-F]{3,8})\]$/);
+    if (hex) {
+      push(`${pre}.${escClassForSelector(c)}{color:${hex[1]};}`);
+      continue;
+    }
+    const rgba = c.match(/^text-\[(rgba?\([^)]+\))\]$/);
+    if (rgba) {
+      push(`${pre}.${escClassForSelector(c)}{color:${rgba[1]};}`);
+      continue;
+    }
+  }
+
+  // Background color classes: bg-[#xxx] or bg-[rgba(...)]
+  for (const c of set) {
+    const hex = c.match(/^bg-\[(#[0-9a-fA-F]{3,8})\]$/);
+    if (hex) {
+      push(`${pre}.${escClassForSelector(c)}{background-color:${hex[1]};}`);
+      continue;
+    }
+    const rgba = c.match(/^bg-\[(rgba?\([^)]+\))\]$/);
+    if (rgba) {
+      push(`${pre}.${escClassForSelector(c)}{background-color:${rgba[1]};}`);
+      continue;
+    }
+  }
+
+  // opacity-[x]
+  for (const c of set) {
+    const m = c.match(/^opacity-\[(0|1|0?\.\d+)\]$/);
+    if (m) {
+      push(`${pre}.${escClassForSelector(c)}{opacity:${m[1]};}`);
+    }
+  }
+
+  // z-index: z-[n] or z-[-n]
+  for (const c of set) {
+    const m = c.match(/^z-\[(-?\d+)\]$/);
+    if (m) {
+      push(`${pre}.${escClassForSelector(c)}{z-index:${m[1]};}`);
+    }
+  }
+
+  // border-solid
+  if (set.has('border-solid')) {
+    push(`${pre}.border-solid{border-style:solid;}`);
+  }
+
+  // border color: border-[#xxx] or border-[rgba(...)]
+  for (const c of set) {
+    const hex = c.match(/^border-\[(#[0-9a-fA-F]{3,8})\]$/);
+    if (hex) {
+      push(`${pre}.${escClassForSelector(c)}{border-color:${hex[1]};}`);
+      continue;
+    }
+    const rgba = c.match(/^border-\[(rgba?\([^)]+\))\]$/);
+    if (rgba) {
+      push(`${pre}.${escClassForSelector(c)}{border-color:${rgba[1]};}`);
+      continue;
+    }
+  }
+
+  // border width: border-[npx]
+  for (const c of set) {
+    const m = c.match(/^border-\[(\d+(?:\.\d+)?)px\]$/);
+    if (m) {
+      push(`${pre}.${escClassForSelector(c)}{border-width:${m[1]}px;}`);
+    }
+  }
+
+  // border width per direction: border-t/r/b/l-[npx]
+  for (const c of set) {
+    const mt = c.match(/^border-t-\[(\d+(?:\.\d+)?)px\]$/);
+    if (mt) {
+      push(`${pre}.${escClassForSelector(c)}{border-top-width:${mt[1]}px;}`);
+      continue;
+    }
+    const mr = c.match(/^border-r-\[(\d+(?:\.\d+)?)px\]$/);
+    if (mr) {
+      push(`${pre}.${escClassForSelector(c)}{border-right-width:${mr[1]}px;}`);
+      continue;
+    }
+    const mb = c.match(/^border-b-\[(\d+(?:\.\d+)?)px\]$/);
+    if (mb) {
+      push(`${pre}.${escClassForSelector(c)}{border-bottom-width:${mb[1]}px;}`);
+      continue;
+    }
+    const ml = c.match(/^border-l-\[(\d+(?:\.\d+)?)px\]$/);
+    if (ml) {
+      push(`${pre}.${escClassForSelector(c)}{border-left-width:${ml[1]}px;}`);
+      continue;
+    }
+  }
+
+  // shadow-[...] - replace underscores with spaces
+  for (const c of set) {
+    const m = c.match(/^shadow-\[(.+)\]$/);
+    if (m && !m[1].includes('inset')) {
+      const shadowValue = m[1].replace(/_/g, ' ');
+      push(`${pre}.${escClassForSelector(c)}{box-shadow:${shadowValue};}`);
     }
   }
 

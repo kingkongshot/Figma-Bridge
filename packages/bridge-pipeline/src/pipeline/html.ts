@@ -2,12 +2,13 @@ import type { RenderNodeIR, DocumentConfig, Viewport, Bounds, Rect, RenderBoxCon
 import { CssCollector } from '../utils/cssCollector';
 import { buildSharedClasses, generateClassCss } from '../utils/classExtractor';
 import { optimizeBoxCss } from '../utils/css-optimizer';
-import { layoutToTailwindClasses, cssToTailwindClasses } from '../utils/tailwind-mapper';
+import { layoutToTailwindClasses, cssToTailwindClasses, ClassStrategy } from '../utils/tailwind-mapper';
 import { buildUtilityCssSelective } from '../utils/utility-css';
 import { buildHtmlHead, buildHtmlBody, buildBaseStyles } from '../utils/html-builder';
 import { splitClassTokens } from '../utils/css-parser';
 import { migrateShadowsToOuter } from '../utils/shadow-migrator';
 import { getSemanticClassName } from '../utils/class-naming';
+import { renderTextSegmentsWithClasses } from '../utils/css';
 
 // Why: avoid one-off utility classes — only promote widths/heights that repeat
 type SizeFreq = { w: Map<number, number>; h: Map<number, number> };
@@ -97,7 +98,21 @@ function h(tag: string, attrs: Record<string, string | number | undefined> | nul
   return `<${tag}${attrStr}>${inner}</${tag}>`;
 }
 
-function layoutToCss(layout: RenderNodeIR['layout']): {
+type LayoutCssOmit = {
+  position?: boolean;
+  left?: boolean;
+  top?: boolean;
+  width?: boolean;
+  height?: boolean;
+  flexGrow?: boolean;
+  flexShrink?: boolean;
+  flexBasis?: boolean;
+  minWidth?: boolean;
+  minHeight?: boolean;
+  alignSelf?: boolean;
+};
+
+function layoutToCss(layout: RenderNodeIR['layout'], omit?: LayoutCssOmit): {
   containerCss: string;
   positioningCss: string;
   sizingCss: string;
@@ -125,11 +140,12 @@ function layoutToCss(layout: RenderNodeIR['layout']): {
 
   const partsPos: string[] = [];
   const pos = layout.position || 'absolute';
-  partsPos.push(`position:${pos};`);
+  if (!omit?.position) partsPos.push(`position:${pos};`);
   if (pos === 'absolute') {
     const l = typeof layout.left === 'number' ? layout.left : 0;
     const t = typeof layout.top === 'number' ? layout.top : 0;
-    partsPos.push(`left:${fmtPx(l)};top:${fmtPx(t)};`);
+    if (!omit?.left) partsPos.push(`left:${fmtPx(l)};`);
+    if (!omit?.top) partsPos.push(`top:${fmtPx(t)};`);
   }
 
   const partsSize: string[] = [];
@@ -143,17 +159,20 @@ function layoutToCss(layout: RenderNodeIR['layout']): {
   const hCss = cssHeight !== undefined
     ? cssHeight
     : (typeof h === 'number' ? fmtPx(h) : undefined);
-  if (wCss !== undefined) partsSize.push(`width:${wCss};`);
-  if (hCss !== undefined) partsSize.push(`height:${hCss};`);
+  if (!omit?.width && wCss !== undefined) partsSize.push(`width:${wCss};`);
+  if (!omit?.height && hCss !== undefined) partsSize.push(`height:${hCss};`);
   if (typeof layout.flexGrow === 'number' && layout.flexGrow > 0) {
-    partsSize.push(`flex-grow:${layout.flexGrow};`);
-    if (typeof layout.flexShrink === 'number' && layout.flexShrink === 0) partsSize.push('flex-shrink:0;');
-    partsSize.push(`flex-basis:${typeof layout.flexBasis === 'number' ? fmtPx(layout.flexBasis) : (layout.flexBasis || '0')};`);
-    partsSize.push('min-width:0;min-height:0;');
+    if (!omit?.flexGrow) partsSize.push(`flex-grow:${layout.flexGrow};`);
+    if (!omit?.flexShrink && typeof layout.flexShrink === 'number' && layout.flexShrink === 0) partsSize.push('flex-shrink:0;');
+    if (!omit?.flexBasis) {
+      partsSize.push(`flex-basis:${typeof layout.flexBasis === 'number' ? fmtPx(layout.flexBasis) : (layout.flexBasis || '0')};`);
+    }
+    if (!omit?.minWidth) partsSize.push('min-width:0;');
+    if (!omit?.minHeight) partsSize.push('min-height:0;');
   } else if (typeof layout.flexShrink === 'number' && layout.flexShrink === 0) {
-    partsSize.push('flex-shrink:0;');
+    if (!omit?.flexShrink) partsSize.push('flex-shrink:0;');
   }
-  if (layout.alignSelf && layout.alignSelf !== 'auto') partsSize.push(`align-self:${layout.alignSelf};`);
+  if (!omit?.alignSelf && layout.alignSelf && layout.alignSelf !== 'auto') partsSize.push(`align-self:${layout.alignSelf};`);
 
   const t2 = layout.transform2x2;
   const isIdentity = t2.a === 1 && t2.b === 0 && t2.c === 0 && t2.d === 1;
@@ -170,6 +189,71 @@ function layoutToCss(layout: RenderNodeIR['layout']): {
     positioningCss: partsPos.join(''),
     sizingCss: partsSize.join(''),
     transformCss: partsXf.join(''),
+  };
+}
+
+function computeLayoutCssOmit(mode: RenderMode | undefined, className: string | undefined): LayoutCssOmit | undefined {
+  if (mode !== 'content' || !className) return undefined;
+  const tokens = className.split(/\s+/).filter(Boolean);
+
+  let omitPosition = false;
+  let omitLeft = false;
+  let omitTop = false;
+  let omitWidth = false;
+  let omitHeight = false;
+  let omitMinWidth = false;
+  let omitMinHeight = false;
+  let omitFlexShrink = false;
+  let omitAlignSelf = false;
+  let omitFlexGrow = false;
+  let omitFlexBasis = false;
+
+  for (const c of tokens) {
+    if (c === 'absolute' || c === 'relative') omitPosition = true;
+    else if (/^left-\[.+\]$/.test(c)) omitLeft = true;
+    else if (/^top-\[.+\]$/.test(c)) omitTop = true;
+    else if (/^w-\[.+\]$/.test(c)) omitWidth = true;
+    else if (/^h-\[.+\]$/.test(c)) omitHeight = true;
+    else if (c === 'min-w-0') omitMinWidth = true;
+    else if (c === 'min-h-0') omitMinHeight = true;
+    else if (c === 'shrink-0') omitFlexShrink = true;
+    else if (c === 'grow') omitFlexGrow = true;
+    else if (c === 'basis-0' || c === 'basis-auto') omitFlexBasis = true;
+    else if (
+      c === 'self-stretch' ||
+      c === 'self-start' ||
+      c === 'self-end' ||
+      c === 'self-center' ||
+      c === 'self-baseline'
+    ) omitAlignSelf = true;
+  }
+
+  if (
+    !omitPosition &&
+    !omitLeft &&
+    !omitTop &&
+    !omitWidth &&
+    !omitHeight &&
+    !omitMinWidth &&
+    !omitMinHeight &&
+    !omitFlexShrink &&
+    !omitAlignSelf &&
+    !omitFlexGrow &&
+    !omitFlexBasis
+  ) return undefined;
+
+  return {
+    position: omitPosition,
+    left: omitLeft,
+    top: omitTop,
+    width: omitWidth,
+    height: omitHeight,
+    minWidth: omitMinWidth,
+    minHeight: omitMinHeight,
+    flexShrink: omitFlexShrink,
+    alignSelf: omitAlignSelf,
+    flexGrow: omitFlexGrow,
+    flexBasis: omitFlexBasis,
   };
 }
 
@@ -308,11 +392,10 @@ function renderWrapperBox(cfg: RenderBoxConfig): string {
   const { className, id, layout, boxCss, innerContent } = cfg;
   const opts = cfg.options;
   const t = layout.transform2x2;
-  const cssSeg = layoutToCss(layout);
+  const cssSeg = layoutToCss(layout, computeLayoutCssOmit(opts?.mode, className));
   const { outerCss, innerCss } = splitBoxCssForWrapper(boxCss);
 
-  const posPart = cssSeg.positioningCss;
-  const baseStart = `${posPart}${opts?.outerOverflowVisible ? 'overflow:visible;' : ''}`;
+  const baseStart = `${cssSeg.positioningCss}${opts?.outerOverflowVisible ? 'overflow:visible;' : ''}`;
   let outer = `${baseStart}${cssSeg.sizingCss}${outerCss}`;
 
   const containerCssForInner = layout.display === 'flex' ? cssSeg.containerCss : '';
@@ -409,25 +492,13 @@ function renderSingleBox(cfg: RenderBoxConfig): string {
   if (cleaned.hasAutoWidth) adjustedLayout.width = 'auto' as any;
   if (cleaned.hasAutoHeight) adjustedLayout.height = 'auto' as any;
 
-  const cssSeg = layoutToCss(adjustedLayout);
+  const cssSeg = layoutToCss(adjustedLayout, computeLayoutCssOmit(opts?.mode, className));
   const isIdentity = t.a === 1 && t.b === 0 && t.c === 0 && t.d === 1;
   const transformPart = isIdentity ? '' : cssSeg.transformCss;
   const posPart = opts?.omitPosition ? '' : cssSeg.positioningCss;
   const baseStart = `${posPart}${transformPart}`;
 
-  let sizeCss = cssSeg.sizingCss;
-  if (opts?.mode === 'content' && className) {
-    const tokens = new Set((className || '').split(/\s+/).filter(Boolean));
-    function drop(prop: string) {
-      sizeCss = sizeCss.replace(new RegExp(`(^|;)\\s*${prop}\\s*:[^;]+;?`, 'gi'), '$1');
-    }
-    if ([...tokens].some(c => /^w-\[.+\]$/.test(c))) drop('width');
-    if ([...tokens].some(c => /^h-\[.+\]$/.test(c))) drop('height');
-    if (tokens.has('shrink-0')) drop('flex-shrink');
-    if (tokens.has('self-stretch') || tokens.has('self-start') || tokens.has('self-end') || tokens.has('self-center') || tokens.has('self-baseline')) drop('align-self');
-    if (tokens.has('grow')) drop('flex-grow');
-    if ([...tokens].some(c => c === 'basis-0' || c === 'basis-auto')) drop('flex-basis');
-  }
+  const sizeCss = cssSeg.sizingCss;
 
   const containerPart = opts?.mode === 'debug' ? cssSeg.containerCss : '';
   const style = `${baseStart}${sizeCss}${cleaned.css}${containerPart}`;
@@ -464,18 +535,6 @@ async function renderFrameNode(ctx: RenderContext): Promise<string> {
   if (ctx.mode === 'content' && !hasWrapper) {
     const util = await layoutToTailwindClasses(layout, boxCss || '');
     if (util.classNames.length) utilClasses.push(...util.classNames);
-    const hasCssWidth = typeof layout.cssWidth === 'string';
-    const hasCssHeight = typeof layout.cssHeight === 'string';
-    if (!hasCssWidth && typeof layout.width === 'number' && shouldUseWidthClass(layout.width, ctx.sizeFreq)) {
-      const cw = `w-[${Math.round(layout.width*100)/100}px]`;
-      utilClasses.push(cw);
-      if (ctx.usedClasses) ctx.usedClasses.add(cw);
-    }
-    if (!hasCssHeight && typeof layout.height === 'number' && shouldUseHeightClass(layout.height, ctx.sizeFreq)) {
-      const ch = `h-[${Math.round(layout.height*100)/100}px]`;
-      utilClasses.push(ch);
-      if (ctx.usedClasses) ctx.usedClasses.add(ch);
-    }
     boxCss = util.remainingCss;
     if (ctx.usedClasses && util.classNames.length) {
       util.classNames.forEach((c: string) => ctx.usedClasses!.add(c));
@@ -534,9 +593,15 @@ async function renderTextNode(ctx: RenderContext): Promise<string> {
   if (!ctx.irNode) throw new Error('renderTextNode: irNode missing');
   // Why: keep text content in debug mode for accurate flexbox sizing, but make it invisible
   const rawTextHtml = (ctx.irNode.content.type === 'text' ? ctx.irNode.content.html : '');
-  const textHtml = ctx.mode === 'debug'
-    ? (rawTextHtml ? `<span style="visibility:hidden;">${rawTextHtml}</span>` : '')
-    : rawTextHtml;
+  let textHtml: string;
+  if (ctx.mode === 'debug') {
+    textHtml = rawTextHtml ? `<span style="visibility:hidden;">${rawTextHtml}</span>` : '';
+  } else if (ctx.mode === 'content' && ctx.irNode.text) {
+    // Upstream generation: regenerate text HTML with Tailwind classes from original text data
+    textHtml = await renderTextSegmentsWithClasses(ctx.irNode.text, ctx.usedClasses);
+  } else {
+    textHtml = rawTextHtml;
+  }
   let boxCss = ctx.mode === 'debug' ? extractLayoutCssForDebug(ctx.irNode.style.boxCss) : ctx.irNode.style.boxCss;
   const cssCtx = {
     position: ctx.irNode.layout.position,
@@ -551,24 +616,6 @@ async function renderTextNode(ctx: RenderContext): Promise<string> {
     const layout = ctx.irNode.layout;
     const util = await layoutToTailwindClasses(layout, boxCss || '');
     if (util.classNames.length) utilClassesT.push(...util.classNames);
-
-    // Why: respect textAutoResize: skip width/height classes when text uses auto sizing
-    const hasAutoWidth = /width\s*:\s*auto\s*(;|$)/i.test(boxCss || '');
-    const hasAutoHeight = /height\s*:\s*auto\s*(;|$)/i.test(boxCss || '');
-
-    const hasCssWidth = typeof layout.cssWidth === 'string';
-    const hasCssHeight = typeof layout.cssHeight === 'string';
-    const w = layout.width; const h = layout.height;
-    if (!hasCssWidth && typeof w === 'number' && !hasAutoWidth && shouldUseWidthClass(w, ctx.sizeFreq)) {
-      const cw = `w-[${Math.round(w*100)/100}px]`;
-      utilClassesT.push(cw);
-      if (ctx.usedClasses) ctx.usedClasses.add(cw);
-    }
-    if (!hasCssHeight && typeof h === 'number' && !hasAutoHeight && shouldUseHeightClass(h, ctx.sizeFreq)) {
-      const ch = `h-[${Math.round(h*100)/100}px]`;
-      utilClassesT.push(ch);
-      if (ctx.usedClasses) ctx.usedClasses.add(ch);
-    }
     boxCss = util.remainingCss;
     if (ctx.usedClasses && util.classNames.length) {
       util.classNames.forEach((c: string) => ctx.usedClasses!.add(c));

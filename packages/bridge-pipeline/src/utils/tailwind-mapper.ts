@@ -5,6 +5,8 @@ export type UtilityMapResult = {
   remainingCss: string;
 };
 
+export type ClassStrategy = 'conservative' | 'aggressive';
+
 type Entry = [key: string, value: string];
 
 function parseCssEntries(css: string): Entry[] {
@@ -31,42 +33,6 @@ function stringifyCss(entries: Entry[]): string {
 // Simple in-memory cache for css → utility results
 const _cache = new Map<string, UtilityMapResult>();
 
-function isAllowedClass(tw: string): boolean {
-  if (!tw) return false;
-  if (tw === 'flex' || tw === 'inline-flex' || tw === 'flex-col') return true;
-  if (tw === 'flex-wrap' || tw === 'flex-nowrap' || tw === 'flex-wrap-reverse') return true;
-  if (tw === 'justify-center' || tw === 'justify-end' || tw === 'justify-between' || tw === 'justify-around' || tw === 'justify-evenly') return true;
-  if (tw === 'items-start' || tw === 'items-center' || tw === 'items-end' || tw === 'items-baseline') return true;
-  if (tw === 'self-start' || tw === 'self-end' || tw === 'self-center' || tw === 'self-stretch' || tw === 'self-baseline') return true;
-  if (tw === 'shrink-0' || tw === 'grow') return true;
-  if (/^gap-(?:\d+|\d+\.5)$/.test(tw)) return true;
-  if (/^gap-\[(?:\d+(?:\.\d+)?)px\]$/.test(tw)) return true; // arbitrary gap in px
-  if (/^gap-[xy]-(?:\d+|\d+\.5)$/.test(tw)) return true; // gap-x / gap-y scale
-  if (/^gap-[xy]-\[(?:\d+(?:\.\d+)?)px\]$/.test(tw)) return true; // gap-x / gap-y arbitrary px
-  if (/^w-\[(?:\d+(?:\.\d+)?)px\]$/.test(tw)) return true;
-  if (/^h-\[(?:\d+(?:\.\d+)?)px\]$/.test(tw)) return true;
-  if (/^text-\[(?:\d+(?:\.\d+)?)px\]$/.test(tw)) return true;
-  if (/^leading-\[(?:\d+(?:\.\d+)?)px\]$/.test(tw)) return true;
-  if (/^tracking-\[[-]?(?:\d+(?:\.\d+)?)(?:px|em)\]$/.test(tw)) return true;
-  if (/^font-(thin|extralight|light|normal|medium|semibold|bold|extrabold|black)$/.test(tw)) return true;
-  if (/^font-\[\d+\]$/.test(tw)) return true;
-  if (/^rounded-\[(?:\d+(?:\.\d+)?)px\]$/.test(tw)) return true;
-  if (/^outline-(?:\d+)$/.test(tw) || /^outline-offset-(?:\d+)$/.test(tw) || /^outline-\[.*\]$/.test(tw)) return true;
-  if (tw === 'basis-0' || tw === 'basis-auto') return true;
-  if (/^(p|px|py|pt|pr|pb|pl)-(?:\d+|\d+\.5)$/.test(tw)) return true; // scale padding
-  if (/^(p|px|py|pt|pr|pb|pl)-\[(?:\d+(?:\.\d+)?)px\]$/.test(tw)) return true; // arbitrary padding
-  if (/^(m|mx|my|mt|mr|mb|ml)-(?:\d+|\d+\.5)$/.test(tw)) return true; // scale margin
-  if (/^-(m|mx|my|mt|mr|mb|ml)-(?:\d+|\d+\.5)$/.test(tw)) return true; // negative scale margin
-  if (/^(?:-)?(m|mx|my|mt|mr|mb|ml)-\[(?:\d+(?:\.\d+)?)px\]$/.test(tw)) return true; // arbitrary (neg) margin
-  if (/^overflow-(visible|hidden|auto|scroll)$/.test(tw)) return true;
-  if (/^overflow-[xy]-(visible|hidden|auto|scroll)$/.test(tw)) return true;
-  if (tw === 'box-border' || tw === 'box-content') return true;
-  if (/^text-(left|center|right|justify)$/.test(tw)) return true;
-  if (/^whitespace-(normal|nowrap|pre|pre-wrap)$/.test(tw)) return true;
-  // Do not include w-auto/h-auto intentionally to preserve current sizing flow
-  return false;
-}
-
 function classListHasGapScale(classes: string[]): boolean {
   return classes.some(c =>
     /^gap-(?:\d+|\d+\.5)$/.test(c) ||
@@ -76,8 +42,8 @@ function classListHasGapScale(classes: string[]): boolean {
   );
 }
 
-export async function cssToTailwindClasses(css: string): Promise<UtilityMapResult> {
-  const key = css || '';
+export async function cssToTailwindClasses(css: string, strategy: ClassStrategy = 'conservative'): Promise<UtilityMapResult> {
+  const key = `${strategy}:${css || ''}`;
   if (_cache.has(key)) return _cache.get(key)!;
   if (!css || !css.trim()) {
     const empty = { classNames: [], remainingCss: '' };
@@ -97,6 +63,40 @@ export async function cssToTailwindClasses(css: string): Promise<UtilityMapResul
     const num = parseFloat(m[2]);
     return m[1] ? -num : num;
   }
+  function normalizeOpacity(v: string): string | null {
+    const n = Number(v);
+    if (!Number.isFinite(n) || n < 0 || n > 1) return null;
+    return String(parseFloat(n.toFixed(3)));
+  }
+  function normalizeZIndex(v: string): string | null {
+    const raw = v.trim();
+    if (!/^-?\d+$/.test(raw)) return null;
+    return raw;
+  }
+  function normalizeHexColor(hex: string): string | null {
+    const m = hex.trim().match(/^#([0-9a-fA-F]{3,8})$/);
+    if (!m) return null;
+    const h = m[1].toLowerCase();
+    if (h.length === 3) return `#${h[0]}${h[0]}${h[1]}${h[1]}${h[2]}${h[2]}`;
+    if (h.length === 4) return `#${h[0]}${h[0]}${h[1]}${h[1]}${h[2]}${h[2]}${h[3]}${h[3]}`;
+    if (h.length === 6 || h.length === 8) return `#${h}`;
+    return null;
+  }
+  function normalizeFuncColor(v: string): string | null {
+    const m = v.trim().match(/^(rgba?)\(([^)]+)\)$/i);
+    if (!m) return null;
+    const fn = m[1].toLowerCase();
+    const args = m[2]
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean)
+      .join(',');
+    if (!args) return null;
+    return `${fn}(${args})`;
+  }
+  function normalizeColor(v: string): string | null {
+    return normalizeHexColor(v) ?? normalizeFuncColor(v);
+  }
   function pxToScale(n: number): string | null {
     const scaled = n / 4;
     const s2 = Math.round(scaled * 2);
@@ -108,6 +108,63 @@ export async function cssToTailwindClasses(css: string): Promise<UtilityMapResul
   }
   function isNonNegative(n: number | null): n is number { return typeof n === 'number' && isFinite(n) && n >= 0; }
   function isAnyNumber(n: number | null): n is number { return typeof n === 'number' && isFinite(n); }
+
+  // Unified spacing tuple: parse any CSS spacing value (1/2/4 parts) into {t,r,b,l}
+  type SpacingTuple = { t: number; r: number; b: number; l: number } | null;
+  function parseSpacing(value: string): SpacingTuple {
+    const parts = value.split(/\s+/).filter(Boolean).map(parsePx);
+    if (parts.length === 1 && parts[0] !== null) {
+      const v = parts[0];
+      return { t: v, r: v, b: v, l: v };
+    }
+    if (parts.length === 2 && parts[0] !== null && parts[1] !== null) {
+      return { t: parts[0], r: parts[1], b: parts[0], l: parts[1] };
+    }
+    if (parts.length === 4 && parts.every(p => p !== null)) {
+      return { t: parts[0]!, r: parts[1]!, b: parts[2]!, l: parts[3]! };
+    }
+    return null;
+  }
+
+  // Generate padding classes from unified tuple with smart compression
+  function genPaddingClasses(s: SpacingTuple, hasScale: boolean): string[] {
+    if (!s || hasScale) return [];
+    const { t, r, b, l } = s;
+    if (t < 0 || r < 0 || b < 0 || l < 0) return []; // padding must be non-negative
+    if (t === r && r === b && b === l) return t !== 0 ? [`p-[${t}px]`] : [];
+    if (t === b && r === l) {
+      const out: string[] = [];
+      if (t !== 0) out.push(`py-[${t}px]`);
+      if (r !== 0) out.push(`px-[${r}px]`);
+      return out;
+    }
+    const out: string[] = [];
+    if (t !== 0) out.push(`pt-[${t}px]`);
+    if (r !== 0) out.push(`pr-[${r}px]`);
+    if (b !== 0) out.push(`pb-[${b}px]`);
+    if (l !== 0) out.push(`pl-[${l}px]`);
+    return out;
+  }
+
+  // Generate margin classes from unified tuple with smart compression (supports negative)
+  function genMarginClasses(s: SpacingTuple, hasScale: boolean): string[] {
+    if (!s || hasScale) return [];
+    const { t, r, b, l } = s;
+    const cls = (prefix: string, v: number) => `${v < 0 ? '-' : ''}${prefix}-[${Math.abs(v)}px]`;
+    if (t === r && r === b && b === l) return t !== 0 ? [cls('m', t)] : [];
+    if (t === b && r === l) {
+      const out: string[] = [];
+      if (t !== 0) out.push(cls('my', t));
+      if (r !== 0) out.push(cls('mx', r));
+      return out;
+    }
+    const out: string[] = [];
+    if (t !== 0) out.push(cls('mt', t));
+    if (r !== 0) out.push(cls('mr', r));
+    if (b !== 0) out.push(cls('mb', b));
+    if (l !== 0) out.push(cls('ml', l));
+    return out;
+  }
 
   // 1) Basic one-to-one mappings (layout semantics and non-spacing)
   for (const [kRaw, vRaw] of entries) {
@@ -181,6 +238,18 @@ export async function cssToTailwindClasses(css: string): Promise<UtilityMapResul
     if (k === 'overflow' && /^(visible|hidden|auto|scroll)$/.test(v)) { classes.add(`overflow-${v}`); continue; }
     if (k === 'overflow-x' && /^(visible|hidden|auto|scroll)$/.test(v)) { classes.add(`overflow-x-${v}`); continue; }
     if (k === 'overflow-y' && /^(visible|hidden|auto|scroll)$/.test(v)) { classes.add(`overflow-y-${v}`); continue; }
+    // opacity: opacity-[0..1]
+    if (k === 'opacity') {
+      const norm = normalizeOpacity(v);
+      if (norm !== null) classes.add(`opacity-[${norm}]`);
+      continue;
+    }
+    // z-index: z-[n]
+    if (k === 'z-index') {
+      const raw = normalizeZIndex(vRaw);
+      if (raw !== null) classes.add(`z-[${raw}]`);
+      continue;
+    }
     // text-align
     if (k === 'text-align') {
       const map: Record<string, string> = { 'left': 'text-left', 'center': 'text-center', 'right': 'text-right', 'justify': 'text-justify' };
@@ -309,53 +378,48 @@ export async function cssToTailwindClasses(css: string): Promise<UtilityMapResul
       if (n !== null && n >= 0 && !hasGapScale) { classes.add(`gap-[${n}px]`); continue; }
     }
     if (k === 'padding') {
-      const parts = v.split(/\s+/).filter(Boolean);
-      if (parts.length === 1) { const n = parsePx(parts[0]); if (n !== null && n >= 0 && !hasPaddingScale) classes.add(`p-[${n}px]`); continue; }
-      if (parts.length === 2) {
-        const ny = parsePx(parts[0]); const nx = parsePx(parts[1]);
-        if (ny !== null && ny >= 0 && !hasPaddingScale) classes.add(`py-[${ny}px]`);
-        if (nx !== null && nx >= 0 && !hasPaddingScale) classes.add(`px-[${nx}px]`);
-        continue;
-      }
-      if (parts.length === 4) {
-        const [nt, nr, nb, nl] = parts.map(parsePx);
-        if (nt !== null && nt >= 0 && !hasPaddingScale) classes.add(`pt-[${nt}px]`);
-        if (nr !== null && nr >= 0 && !hasPaddingScale) classes.add(`pr-[${nr}px]`);
-        if (nb !== null && nb >= 0 && !hasPaddingScale) classes.add(`pb-[${nb}px]`);
-        if (nl !== null && nl >= 0 && !hasPaddingScale) classes.add(`pl-[${nl}px]`);
-        continue;
-      }
+      genPaddingClasses(parseSpacing(v), hasPaddingScale).forEach(c => classes.add(c));
+      continue;
     }
     if (k === 'padding-top' || k === 'padding-right' || k === 'padding-bottom' || k === 'padding-left') {
-      const n = parsePx(v); if (n !== null && n >= 0 && !hasPaddingScale) {
+      const n = parsePx(v);
+      if (n !== null && n >= 0 && !hasPaddingScale) {
         const map: Record<string,string> = { 'padding-top':'pt','padding-right':'pr','padding-bottom':'pb','padding-left':'pl' };
         classes.add(`${map[k]}-[${n}px]`);
-        continue;
       }
+      continue;
     }
     if (k === 'margin') {
-      const parts = v.split(/\s+/).filter(Boolean);
-      if (parts.length === 1) { const n = parsePx(parts[0]); if (n !== null && !hasMarginScale) classes.add(`${n<0?'-':''}m-[${Math.abs(n)}px]`); continue; }
-      if (parts.length === 2) {
-        const ny = parsePx(parts[0]); const nx = parsePx(parts[1]);
-        if (ny !== null && !hasMarginScale) classes.add(`${ny<0?'-':''}my-[${Math.abs(ny)}px]`);
-        if (nx !== null && !hasMarginScale) classes.add(`${nx<0?'-':''}mx-[${Math.abs(nx)}px]`);
-        continue;
-      }
-      if (parts.length === 4) {
-        const [nt, nr, nb, nl] = parts.map(parsePx);
-        if (nt !== null && !hasMarginScale) classes.add(`${nt<0?'-':''}mt-[${Math.abs(nt)}px]`);
-        if (nr !== null && !hasMarginScale) classes.add(`${nr<0?'-':''}mr-[${Math.abs(nr)}px]`);
-        if (nb !== null && !hasMarginScale) classes.add(`${nb<0?'-':''}mb-[${Math.abs(nb)}px]`);
-        if (nl !== null && !hasMarginScale) classes.add(`${nl<0?'-':''}ml-[${Math.abs(nl)}px]`);
-        continue;
-      }
+      genMarginClasses(parseSpacing(v), hasMarginScale).forEach(c => classes.add(c));
+      continue;
     }
     if (k === 'margin-top' || k === 'margin-right' || k === 'margin-bottom' || k === 'margin-left') {
-      const n = parsePx(v); if (n !== null && !hasMarginScale) {
+      const n = parsePx(v);
+      if (n !== null && !hasMarginScale) {
         const map: Record<string,string> = { 'margin-top':'mt','margin-right':'mr','margin-bottom':'mb','margin-left':'ml' };
         classes.add(`${n<0?'-':''}${map[k]}-[${Math.abs(n)}px]`);
-        continue;
+      }
+      continue;
+    }
+  }
+
+  // Aggressive strategy: parse color properties
+  if (strategy === 'aggressive') {
+    for (const [k, vRaw] of entries) {
+      const v = vRaw.trim();
+      if (k === 'color') {
+        const color = normalizeColor(v);
+        if (color) {
+          classes.add(`text-[${color}]`);
+          continue;
+        }
+      }
+      if (k === 'background-color' || k === 'background') {
+        const color = normalizeColor(v);
+        if (color) {
+          classes.add(`bg-[${color}]`);
+          continue;
+        }
       }
     }
   }
@@ -364,6 +428,14 @@ export async function cssToTailwindClasses(css: string): Promise<UtilityMapResul
   const cssToClassCheckers: Record<string, Checker> = {
     'width': (_v, cls) => Array.from(cls).some(c => /^w-\[.+\]$/.test(c)),
     'height': (_v, cls) => Array.from(cls).some(c => /^h-\[.+\]$/.test(c)),
+    'opacity': (v, cls) => {
+      const norm = normalizeOpacity(v);
+      return norm !== null && cls.has(`opacity-[${norm}]`);
+    },
+    'z-index': (v, cls) => {
+      const norm = normalizeZIndex(v);
+      return norm !== null && cls.has(`z-[${norm}]`);
+    },
     'display': (v, cls) => (v === 'flex' && cls.has('flex')) || (v === 'inline-flex' && cls.has('inline-flex')),
     'flex-direction': (v, cls) => (v === 'row') || (v === 'column' && cls.has('flex-col')),
     'flex-wrap': (v, cls) =>
@@ -462,6 +534,19 @@ export async function cssToTailwindClasses(css: string): Promise<UtilityMapResul
     'margin-right': (_v, cls) => Array.from(cls).some(c => /^(?:-)?(mr|mx|m)-(?:\d+|\d+\.5)$/.test(c) || /^(?:-)?(mr|mx|m)-\[(?:\d+(?:\.\d+)?)px\]$/.test(c)),
     'margin-top': (_v, cls) => Array.from(cls).some(c => /^(?:-)?(mt|my|m)-(?:\d+|\d+\.5)$/.test(c) || /^(?:-)?(mt|my|m)-\[(?:\d+(?:\.\d+)?)px\]$/.test(c)),
     'margin-bottom': (_v, cls) => Array.from(cls).some(c => /^(?:-)?(mb|my|m)-(?:\d+|\d+\.5)$/.test(c) || /^(?:-)?(mb|my|m)-\[(?:\d+(?:\.\d+)?)px\]$/.test(c)),
+    // color properties: drop only when exact matching class exists (aggressive strategy)
+    'color': (v, cls) => {
+      const c = normalizeColor(v);
+      return c !== null && cls.has(`text-[${c}]`);
+    },
+    'background-color': (v, cls) => {
+      const c = normalizeColor(v);
+      return c !== null && cls.has(`bg-[${c}]`);
+    },
+    'background': (v, cls) => {
+      const c = normalizeColor(v);
+      return c !== null && cls.has(`bg-[${c}]`);
+    },
   };
 
   for (const [k, vRaw] of entries) {
@@ -471,15 +556,42 @@ export async function cssToTailwindClasses(css: string): Promise<UtilityMapResul
     kept.push([k, vRaw]);
   }
 
-  const result: UtilityMapResult = { classNames: Array.from(classes), remainingCss: stringifyCss(kept) };
+  const result: UtilityMapResult = { classNames: Array.from(classes).sort(), remainingCss: stringifyCss(kept) };
   _cache.set(key, result);
   return result;
 }
 
 // Direct semantic → Tailwind class mapping, then merge with visual CSS conversion.
-// Sizing (width/height) 与定位(position/left/top)不生成类，保持由渲染层 inline 控制。
+// 布局相关的 position/left/top/width/height 由这里统一从 layout 生成类名，
+// 渲染层可以安全地把对应的 inline 样式移除。
 export async function layoutToTailwindClasses(layout: LayoutInfo, extraCss: string): Promise<UtilityMapResult> {
   const classes = new Set<string>();
+
+  // 1. Position
+  if (layout.position === 'absolute') {
+    classes.add('absolute');
+    // Left/Top
+    if (typeof layout.left === 'number') {
+      const x = Number.isInteger(layout.left) ? String(layout.left) : String(Number(layout.left.toFixed(2)));
+      classes.add(`left-[${x}px]`);
+    }
+    if (typeof layout.top === 'number') {
+      const y = Number.isInteger(layout.top) ? String(layout.top) : String(Number(layout.top.toFixed(2)));
+      classes.add(`top-[${y}px]`);
+    }
+  } else if (layout.position === 'relative') {
+    classes.add('relative');
+  }
+
+  // 2. Size (Width/Height) - skip when cssWidth/cssHeight override exists (e.g., width:auto)
+  if (typeof layout.width === 'number' && layout.width >= 0 && !layout.cssWidth) {
+    const w = Number.isInteger(layout.width) ? String(layout.width) : String(Number(layout.width.toFixed(2)));
+    classes.add(`w-[${w}px]`);
+  }
+  if (typeof layout.height === 'number' && layout.height >= 0 && !layout.cssHeight) {
+    const h = Number.isInteger(layout.height) ? String(layout.height) : String(Number(layout.height.toFixed(2)));
+    classes.add(`h-[${h}px]`);
+  }
 
   // Container semantics
   if (layout.display === 'flex') {
@@ -546,7 +658,11 @@ export async function layoutToTailwindClasses(layout: LayoutInfo, extraCss: stri
   if (layout.overflow === 'hidden') classes.add('overflow-hidden');
 
   // Flex item semantics
-  if (typeof layout.flexGrow === 'number' && layout.flexGrow > 0) classes.add('grow');
+  if (typeof layout.flexGrow === 'number' && layout.flexGrow > 0) {
+    classes.add('grow');
+    classes.add('min-w-0');
+    classes.add('min-h-0');
+  }
   if (typeof layout.flexShrink === 'number' && layout.flexShrink === 0) classes.add('shrink-0');
   if (layout.flexBasis === 0) classes.add('basis-0');
   if (layout.flexBasis === 'auto') classes.add('basis-auto');
@@ -562,5 +678,5 @@ export async function layoutToTailwindClasses(layout: LayoutInfo, extraCss: stri
   // Visual CSS → utility classes（并返回剩余 CSS）
   const util = await cssToTailwindClasses(extraCss || '');
   for (const c of util.classNames) classes.add(c);
-  return { classNames: Array.from(classes), remainingCss: util.remainingCss };
+  return { classNames: Array.from(classes).sort(), remainingCss: util.remainingCss };
 }
