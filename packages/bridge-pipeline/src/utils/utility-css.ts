@@ -308,98 +308,57 @@ export function buildUtilityCssSelective(classes: Iterable<string>, scope?: stri
     }
   }
 
-  // Color classes: text-[#xxx] or text-[rgba(...)]
+  // Color arbitrary classes: unified pattern for text/bg/border colors
+  const colorRules: { prefix: string; cssProp: string }[] = [
+    { prefix: 'text', cssProp: 'color' },
+    { prefix: 'bg', cssProp: 'background-color' },
+    { prefix: 'border', cssProp: 'border-color' },
+  ];
   for (const c of set) {
-    const hex = c.match(/^text-\[(#[0-9a-fA-F]{3,8})\]$/);
-    if (hex) {
-      push(`${pre}.${escClassForSelector(c)}{color:${hex[1]};}`);
-      continue;
-    }
-    const rgba = c.match(/^text-\[(rgba?\([^)]+\))\]$/);
-    if (rgba) {
-      push(`${pre}.${escClassForSelector(c)}{color:${rgba[1]};}`);
-      continue;
-    }
-  }
-
-  // Background color classes: bg-[#xxx] or bg-[rgba(...)]
-  for (const c of set) {
-    const hex = c.match(/^bg-\[(#[0-9a-fA-F]{3,8})\]$/);
-    if (hex) {
-      push(`${pre}.${escClassForSelector(c)}{background-color:${hex[1]};}`);
-      continue;
-    }
-    const rgba = c.match(/^bg-\[(rgba?\([^)]+\))\]$/);
-    if (rgba) {
-      push(`${pre}.${escClassForSelector(c)}{background-color:${rgba[1]};}`);
-      continue;
+    for (const { prefix, cssProp } of colorRules) {
+      const hexMatch = c.match(new RegExp(`^${prefix}-\\[(#[0-9a-fA-F]{3,8})\\]$`));
+      if (hexMatch) {
+        push(`${pre}.${escClassForSelector(c)}{${cssProp}:${hexMatch[1]};}`);
+        break;
+      }
+      const rgbaMatch = c.match(new RegExp(`^${prefix}-\\[(rgba?\\([^)]+\\))\\]$`));
+      if (rgbaMatch) {
+        push(`${pre}.${escClassForSelector(c)}{${cssProp}:${rgbaMatch[1]};}`);
+        break;
+      }
     }
   }
 
   // opacity-[x]
   for (const c of set) {
     const m = c.match(/^opacity-\[(0|1|0?\.\d+)\]$/);
-    if (m) {
-      push(`${pre}.${escClassForSelector(c)}{opacity:${m[1]};}`);
-    }
+    if (m) push(`${pre}.${escClassForSelector(c)}{opacity:${m[1]};}`);
   }
 
   // z-index: z-[n] or z-[-n]
   for (const c of set) {
     const m = c.match(/^z-\[(-?\d+)\]$/);
-    if (m) {
-      push(`${pre}.${escClassForSelector(c)}{z-index:${m[1]};}`);
-    }
+    if (m) push(`${pre}.${escClassForSelector(c)}{z-index:${m[1]};}`);
   }
 
   // border-solid
-  if (set.has('border-solid')) {
-    push(`${pre}.border-solid{border-style:solid;}`);
-  }
+  if (set.has('border-solid')) push(`${pre}.border-solid{border-style:solid;}`);
 
-  // border color: border-[#xxx] or border-[rgba(...)]
+  // border width: border-[npx] and border-t/r/b/l-[npx]
+  const borderWidthRules: { pattern: RegExp; cssProp: string }[] = [
+    { pattern: /^border-\[(\d+(?:\.\d+)?)px\]$/, cssProp: 'border-width' },
+    { pattern: /^border-t-\[(\d+(?:\.\d+)?)px\]$/, cssProp: 'border-top-width' },
+    { pattern: /^border-r-\[(\d+(?:\.\d+)?)px\]$/, cssProp: 'border-right-width' },
+    { pattern: /^border-b-\[(\d+(?:\.\d+)?)px\]$/, cssProp: 'border-bottom-width' },
+    { pattern: /^border-l-\[(\d+(?:\.\d+)?)px\]$/, cssProp: 'border-left-width' },
+  ];
   for (const c of set) {
-    const hex = c.match(/^border-\[(#[0-9a-fA-F]{3,8})\]$/);
-    if (hex) {
-      push(`${pre}.${escClassForSelector(c)}{border-color:${hex[1]};}`);
-      continue;
-    }
-    const rgba = c.match(/^border-\[(rgba?\([^)]+\))\]$/);
-    if (rgba) {
-      push(`${pre}.${escClassForSelector(c)}{border-color:${rgba[1]};}`);
-      continue;
-    }
-  }
-
-  // border width: border-[npx]
-  for (const c of set) {
-    const m = c.match(/^border-\[(\d+(?:\.\d+)?)px\]$/);
-    if (m) {
-      push(`${pre}.${escClassForSelector(c)}{border-width:${m[1]}px;}`);
-    }
-  }
-
-  // border width per direction: border-t/r/b/l-[npx]
-  for (const c of set) {
-    const mt = c.match(/^border-t-\[(\d+(?:\.\d+)?)px\]$/);
-    if (mt) {
-      push(`${pre}.${escClassForSelector(c)}{border-top-width:${mt[1]}px;}`);
-      continue;
-    }
-    const mr = c.match(/^border-r-\[(\d+(?:\.\d+)?)px\]$/);
-    if (mr) {
-      push(`${pre}.${escClassForSelector(c)}{border-right-width:${mr[1]}px;}`);
-      continue;
-    }
-    const mb = c.match(/^border-b-\[(\d+(?:\.\d+)?)px\]$/);
-    if (mb) {
-      push(`${pre}.${escClassForSelector(c)}{border-bottom-width:${mb[1]}px;}`);
-      continue;
-    }
-    const ml = c.match(/^border-l-\[(\d+(?:\.\d+)?)px\]$/);
-    if (ml) {
-      push(`${pre}.${escClassForSelector(c)}{border-left-width:${ml[1]}px;}`);
-      continue;
+    for (const { pattern, cssProp } of borderWidthRules) {
+      const m = c.match(pattern);
+      if (m) {
+        push(`${pre}.${escClassForSelector(c)}{${cssProp}:${m[1]}px;}`);
+        break;
+      }
     }
   }
 

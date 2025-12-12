@@ -1,8 +1,12 @@
-import type { LayoutInfo } from '../pipeline/types';
+import type { LayoutInfo, LayoutCssOmit } from '../pipeline/types';
 
 export type UtilityMapResult = {
   classNames: string[];
   remainingCss: string;
+};
+
+export type LayoutMapResult = UtilityMapResult & {
+  omitFromInline: LayoutCssOmit;
 };
 
 export type ClassStrategy = 'conservative' | 'aggressive';
@@ -30,6 +34,126 @@ function stringifyCss(entries: Entry[]): string {
   return entries.map(([k, v]) => `${k}:${v};`).join('');
 }
 
+// Pure helper functions (extracted for testability)
+function parsePx(v: string): number | null {
+  const m = v.trim().match(/^(-)?(\d+(?:\.\d+)?)px$/i);
+  if (!m) return null;
+  const num = parseFloat(m[2]);
+  return m[1] ? -num : num;
+}
+
+function normalizeOpacity(v: string): string | null {
+  const n = Number(v);
+  if (!Number.isFinite(n) || n < 0 || n > 1) return null;
+  return String(parseFloat(n.toFixed(3)));
+}
+
+function normalizeZIndex(v: string): string | null {
+  const raw = v.trim();
+  if (!/^-?\d+$/.test(raw)) return null;
+  return raw;
+}
+
+function normalizeHexColor(hex: string): string | null {
+  const m = hex.trim().match(/^#([0-9a-fA-F]{3,8})$/);
+  if (!m) return null;
+  const h = m[1].toLowerCase();
+  if (h.length === 3) return `#${h[0]}${h[0]}${h[1]}${h[1]}${h[2]}${h[2]}`;
+  if (h.length === 4) return `#${h[0]}${h[0]}${h[1]}${h[1]}${h[2]}${h[2]}${h[3]}${h[3]}`;
+  if (h.length === 6 || h.length === 8) return `#${h}`;
+  return null;
+}
+
+function normalizeFuncColor(v: string): string | null {
+  const m = v.trim().match(/^(rgba?)\(([^)]+)\)$/i);
+  if (!m) return null;
+  const fn = m[1].toLowerCase();
+  const args = m[2].split(',').map(s => s.trim()).filter(Boolean).join(',');
+  if (!args) return null;
+  return `${fn}(${args})`;
+}
+
+function normalizeColor(v: string): string | null {
+  return normalizeHexColor(v) ?? normalizeFuncColor(v);
+}
+
+function pxToScale(n: number): string | null {
+  const scaled = n / 4;
+  const s2 = Math.round(scaled * 2);
+  if (Math.abs(scaled * 2 - s2) < 1e-6) {
+    const val = s2 / 2;
+    return Number.isInteger(val) ? String(val) : String(val);
+  }
+  return null;
+}
+
+function isNonNegative(n: number | null): n is number {
+  return typeof n === 'number' && isFinite(n) && n >= 0;
+}
+
+function isAnyNumber(n: number | null): n is number {
+  return typeof n === 'number' && isFinite(n);
+}
+
+type SpacingTuple = { t: number; r: number; b: number; l: number } | null;
+
+function parseSpacing(value: string): SpacingTuple {
+  const parts = value.split(/\s+/).filter(Boolean).map(parsePx);
+  if (parts.length === 1 && parts[0] !== null) {
+    const v = parts[0];
+    return { t: v, r: v, b: v, l: v };
+  }
+  if (parts.length === 2 && parts[0] !== null && parts[1] !== null) {
+    return { t: parts[0], r: parts[1], b: parts[0], l: parts[1] };
+  }
+  if (parts.length === 4 && parts.every(p => p !== null)) {
+    return { t: parts[0]!, r: parts[1]!, b: parts[2]!, l: parts[3]! };
+  }
+  return null;
+}
+
+function genPaddingClasses(s: SpacingTuple, hasScale: boolean): string[] {
+  if (!s || hasScale) return [];
+  const { t, r, b, l } = s;
+  if (t < 0 || r < 0 || b < 0 || l < 0) return [];
+  if (t === r && r === b && b === l) return t !== 0 ? [`p-[${t}px]`] : [];
+  if (t === b && r === l) {
+    const out: string[] = [];
+    if (t !== 0) out.push(`py-[${t}px]`);
+    if (r !== 0) out.push(`px-[${r}px]`);
+    return out;
+  }
+  const out: string[] = [];
+  if (t !== 0) out.push(`pt-[${t}px]`);
+  if (r !== 0) out.push(`pr-[${r}px]`);
+  if (b !== 0) out.push(`pb-[${b}px]`);
+  if (l !== 0) out.push(`pl-[${l}px]`);
+  return out;
+}
+
+function genMarginClasses(s: SpacingTuple, hasScale: boolean): string[] {
+  if (!s || hasScale) return [];
+  const { t, r, b, l } = s;
+  const cls = (prefix: string, v: number) => `${v < 0 ? '-' : ''}${prefix}-[${Math.abs(v)}px]`;
+  if (t === r && r === b && b === l) return t !== 0 ? [cls('m', t)] : [];
+  if (t === b && r === l) {
+    const out: string[] = [];
+    if (t !== 0) out.push(cls('my', t));
+    if (r !== 0) out.push(cls('mx', r));
+    return out;
+  }
+  const out: string[] = [];
+  if (t !== 0) out.push(cls('mt', t));
+  if (r !== 0) out.push(cls('mr', r));
+  if (b !== 0) out.push(cls('mb', b));
+  if (l !== 0) out.push(cls('ml', l));
+  return out;
+}
+
+function fmtNum(n: number): string {
+  return Number.isInteger(n) ? String(n) : String(Number(n.toFixed(2)));
+}
+
 // Simple in-memory cache for css → utility results
 const _cache = new Map<string, UtilityMapResult>();
 
@@ -51,120 +175,9 @@ export async function cssToTailwindClasses(css: string, strategy: ClassStrategy 
     return empty;
   }
 
-  // Parse entries and generate basic Tailwind classes without external converter
   const kept: Entry[] = [];
   const classes = new Set<string>();
   const entries = parseCssEntries(css);
-
-  // Helpers for spacing scale mapping (Tailwind spacing scale: 1 = 0.25rem = 4px)
-  function parsePx(v: string): number | null {
-    const m = v.trim().match(/^(-)?(\d+(?:\.\d+)?)px$/i);
-    if (!m) return null;
-    const num = parseFloat(m[2]);
-    return m[1] ? -num : num;
-  }
-  function normalizeOpacity(v: string): string | null {
-    const n = Number(v);
-    if (!Number.isFinite(n) || n < 0 || n > 1) return null;
-    return String(parseFloat(n.toFixed(3)));
-  }
-  function normalizeZIndex(v: string): string | null {
-    const raw = v.trim();
-    if (!/^-?\d+$/.test(raw)) return null;
-    return raw;
-  }
-  function normalizeHexColor(hex: string): string | null {
-    const m = hex.trim().match(/^#([0-9a-fA-F]{3,8})$/);
-    if (!m) return null;
-    const h = m[1].toLowerCase();
-    if (h.length === 3) return `#${h[0]}${h[0]}${h[1]}${h[1]}${h[2]}${h[2]}`;
-    if (h.length === 4) return `#${h[0]}${h[0]}${h[1]}${h[1]}${h[2]}${h[2]}${h[3]}${h[3]}`;
-    if (h.length === 6 || h.length === 8) return `#${h}`;
-    return null;
-  }
-  function normalizeFuncColor(v: string): string | null {
-    const m = v.trim().match(/^(rgba?)\(([^)]+)\)$/i);
-    if (!m) return null;
-    const fn = m[1].toLowerCase();
-    const args = m[2]
-      .split(',')
-      .map(s => s.trim())
-      .filter(Boolean)
-      .join(',');
-    if (!args) return null;
-    return `${fn}(${args})`;
-  }
-  function normalizeColor(v: string): string | null {
-    return normalizeHexColor(v) ?? normalizeFuncColor(v);
-  }
-  function pxToScale(n: number): string | null {
-    const scaled = n / 4;
-    const s2 = Math.round(scaled * 2);
-    if (Math.abs(scaled * 2 - s2) < 1e-6) {
-      const val = s2 / 2;
-      return Number.isInteger(val) ? String(val) : String(val);
-    }
-    return null;
-  }
-  function isNonNegative(n: number | null): n is number { return typeof n === 'number' && isFinite(n) && n >= 0; }
-  function isAnyNumber(n: number | null): n is number { return typeof n === 'number' && isFinite(n); }
-
-  // Unified spacing tuple: parse any CSS spacing value (1/2/4 parts) into {t,r,b,l}
-  type SpacingTuple = { t: number; r: number; b: number; l: number } | null;
-  function parseSpacing(value: string): SpacingTuple {
-    const parts = value.split(/\s+/).filter(Boolean).map(parsePx);
-    if (parts.length === 1 && parts[0] !== null) {
-      const v = parts[0];
-      return { t: v, r: v, b: v, l: v };
-    }
-    if (parts.length === 2 && parts[0] !== null && parts[1] !== null) {
-      return { t: parts[0], r: parts[1], b: parts[0], l: parts[1] };
-    }
-    if (parts.length === 4 && parts.every(p => p !== null)) {
-      return { t: parts[0]!, r: parts[1]!, b: parts[2]!, l: parts[3]! };
-    }
-    return null;
-  }
-
-  // Generate padding classes from unified tuple with smart compression
-  function genPaddingClasses(s: SpacingTuple, hasScale: boolean): string[] {
-    if (!s || hasScale) return [];
-    const { t, r, b, l } = s;
-    if (t < 0 || r < 0 || b < 0 || l < 0) return []; // padding must be non-negative
-    if (t === r && r === b && b === l) return t !== 0 ? [`p-[${t}px]`] : [];
-    if (t === b && r === l) {
-      const out: string[] = [];
-      if (t !== 0) out.push(`py-[${t}px]`);
-      if (r !== 0) out.push(`px-[${r}px]`);
-      return out;
-    }
-    const out: string[] = [];
-    if (t !== 0) out.push(`pt-[${t}px]`);
-    if (r !== 0) out.push(`pr-[${r}px]`);
-    if (b !== 0) out.push(`pb-[${b}px]`);
-    if (l !== 0) out.push(`pl-[${l}px]`);
-    return out;
-  }
-
-  // Generate margin classes from unified tuple with smart compression (supports negative)
-  function genMarginClasses(s: SpacingTuple, hasScale: boolean): string[] {
-    if (!s || hasScale) return [];
-    const { t, r, b, l } = s;
-    const cls = (prefix: string, v: number) => `${v < 0 ? '-' : ''}${prefix}-[${Math.abs(v)}px]`;
-    if (t === r && r === b && b === l) return t !== 0 ? [cls('m', t)] : [];
-    if (t === b && r === l) {
-      const out: string[] = [];
-      if (t !== 0) out.push(cls('my', t));
-      if (r !== 0) out.push(cls('mx', r));
-      return out;
-    }
-    const out: string[] = [];
-    if (t !== 0) out.push(cls('mt', t));
-    if (r !== 0) out.push(cls('mr', r));
-    if (b !== 0) out.push(cls('mb', b));
-    if (l !== 0) out.push(cls('ml', l));
-    return out;
-  }
 
   // 1) Basic one-to-one mappings (layout semantics and non-spacing)
   for (const [kRaw, vRaw] of entries) {
@@ -333,11 +346,6 @@ export async function cssToTailwindClasses(css: string, strategy: ClassStrategy 
     }
   }
 
-  // 生成任意像素的 gap/padding/margin 的 bracket 类（如 gap-[9px], p-[17px], -mt-[4px]）
-  // 统一数值精度到 3 位小数，去掉多余的 0
-  function fmt(n: number): string {
-    return String(parseFloat(n.toFixed(3)));
-  }
   // Helpers to avoid generating duplicate arbitrary classes when a scale class already exists
   const hasGapScale = Array.from(classes).some(c => /^gap-(?:\d+|\d+\.5)$/.test(c));
   const hasPaddingScale = Array.from(classes).some(c => /^(p|px|py|pt|pr|pb|pl)-(?:\d+|\d+\.5)$/.test(c));
@@ -364,7 +372,7 @@ export async function cssToTailwindClasses(css: string, strategy: ClassStrategy 
       const m = v.match(/^(\d+(?:\.\d+)?)px(?:\s+\1px){0,3}$/);
       if (m) {
         const n = parseFloat(m[1]);
-        if (isFinite(n)) classes.add(`rounded-[${fmt(n)}px]`);
+        if (isFinite(n)) classes.add(`rounded-[${fmtNum(n)}px]`);
         continue;
       }
     }
@@ -514,13 +522,8 @@ export async function cssToTailwindClasses(css: string, strategy: ClassStrategy 
     // padding family: drop when any matching padding class exists
     'padding': (v, cls) => {
       const parts = v.split(/\s+/).filter(Boolean);
-      const has = (name: string) => cls.has(name);
       const hasAnyPad = Array.from(cls).some(c => /^(p|px|py|pt|pr|pb|pl)-(?:\d+|\d+\.5)$/.test(c) || /^(p|px|py|pt|pr|pb|pl)-\[(?:\d+(?:\.\d+)?)px\]$/.test(c));
-      if (!hasAnyPad) return false;
-      if (parts.length === 1) return true;
-      if (parts.length === 2) return true;
-      if (parts.length === 4) return true;
-      return false;
+      return hasAnyPad && (parts.length === 1 || parts.length === 2 || parts.length === 4);
     },
     'padding-top': (_v, cls) => Array.from(cls).some(c => /^(p|py|pt)-(?:\d+|\d+\.5)$/.test(c) || /^(p|py|pt)-\[(?:\d+(?:\.\d+)?)px\]$/.test(c)),
     'padding-right': (_v, cls) => Array.from(cls).some(c => /^(p|px|pr)-(?:\d+|\d+\.5)$/.test(c) || /^(p|px|pr)-\[(?:\d+(?:\.\d+)?)px\]$/.test(c)),
@@ -562,59 +565,54 @@ export async function cssToTailwindClasses(css: string, strategy: ClassStrategy 
 }
 
 // Direct semantic → Tailwind class mapping, then merge with visual CSS conversion.
-// 布局相关的 position/left/top/width/height 由这里统一从 layout 生成类名，
-// 渲染层可以安全地把对应的 inline 样式移除。
-export async function layoutToTailwindClasses(layout: LayoutInfo, extraCss: string): Promise<UtilityMapResult> {
+// Returns classNames, remainingCss, and omitFromInline to tell downstream what to skip.
+export async function layoutToTailwindClasses(layout: LayoutInfo, extraCss: string): Promise<LayoutMapResult> {
   const classes = new Set<string>();
+  const omit: LayoutCssOmit = {};
 
   // 1. Position
   if (layout.position === 'absolute') {
     classes.add('absolute');
-    // Left/Top
+    omit.position = true;
     if (typeof layout.left === 'number') {
-      const x = Number.isInteger(layout.left) ? String(layout.left) : String(Number(layout.left.toFixed(2)));
-      classes.add(`left-[${x}px]`);
+      classes.add(`left-[${fmtNum(layout.left)}px]`);
+      omit.left = true;
     }
     if (typeof layout.top === 'number') {
-      const y = Number.isInteger(layout.top) ? String(layout.top) : String(Number(layout.top.toFixed(2)));
-      classes.add(`top-[${y}px]`);
+      classes.add(`top-[${fmtNum(layout.top)}px]`);
+      omit.top = true;
     }
   } else if (layout.position === 'relative') {
     classes.add('relative');
+    omit.position = true;
   }
 
   // 2. Size (Width/Height) - skip when cssWidth/cssHeight override exists (e.g., width:auto)
   if (typeof layout.width === 'number' && layout.width >= 0 && !layout.cssWidth) {
-    const w = Number.isInteger(layout.width) ? String(layout.width) : String(Number(layout.width.toFixed(2)));
-    classes.add(`w-[${w}px]`);
+    classes.add(`w-[${fmtNum(layout.width)}px]`);
+    omit.width = true;
   }
   if (typeof layout.height === 'number' && layout.height >= 0 && !layout.cssHeight) {
-    const h = Number.isInteger(layout.height) ? String(layout.height) : String(Number(layout.height.toFixed(2)));
-    classes.add(`h-[${h}px]`);
+    classes.add(`h-[${fmtNum(layout.height)}px]`);
+    omit.height = true;
   }
 
   // Container semantics
   if (layout.display === 'flex') {
     classes.add('flex');
     if (layout.flexDirection === 'column') classes.add('flex-col');
-    // wrap
     if (layout.flexWrap === 'wrap') classes.add('flex-wrap');
-    // gap → arbitrary px
     if (typeof layout.gap === 'number' && layout.gap > 0) {
-      const g = Number.isInteger(layout.gap) ? String(layout.gap) : String(Number(layout.gap.toFixed(2)).toString());
-      classes.add(`gap-[${g}px]`);
+      classes.add(`gap-[${fmtNum(layout.gap)}px]`);
     }
-    // rowGap/columnGap when wrap
     if (layout.flexWrap === 'wrap') {
-      const fmt = (n: number) => (Number.isInteger(n) ? String(n) : String(Number(n.toFixed(2))));
       if (typeof (layout as any).rowGap === 'number' && (layout as any).rowGap > 0) {
-        classes.add(`gap-y-[${fmt((layout as any).rowGap)}px]`);
+        classes.add(`gap-y-[${fmtNum((layout as any).rowGap)}px]`);
       }
       if (typeof (layout as any).columnGap === 'number' && (layout as any).columnGap > 0) {
-        classes.add(`gap-x-[${fmt((layout as any).columnGap)}px]`);
+        classes.add(`gap-x-[${fmtNum((layout as any).columnGap)}px]`);
       }
     }
-    // justify-content
     const jcMap: Record<string, string> = {
       'center': 'justify-center',
       'flex-end': 'justify-end',
@@ -623,7 +621,6 @@ export async function layoutToTailwindClasses(layout: LayoutInfo, extraCss: stri
       'space-evenly': 'justify-evenly',
     };
     if (layout.justifyContent && jcMap[layout.justifyContent]) classes.add(jcMap[layout.justifyContent]);
-    // align-items
     const aiMap: Record<string, string> = {
       'center': 'items-center',
       'flex-start': 'items-start',
@@ -636,17 +633,16 @@ export async function layoutToTailwindClasses(layout: LayoutInfo, extraCss: stri
   // padding
   if (layout.padding) {
     const { t = 0, r = 0, b = 0, l = 0 } = layout.padding as any;
-    const fmt = (n: number) => (Number.isInteger(n) ? String(n) : String(Number(n.toFixed(2))));
     if (t === r && r === b && b === l && t !== 0) {
-      classes.add(`p-[${fmt(t)}px]`);
+      classes.add(`p-[${fmtNum(t)}px]`);
     } else if (t === b && r === l && (t !== 0 || r !== 0)) {
-      if (t !== 0) classes.add(`py-[${fmt(t)}px]`);
-      if (r !== 0) classes.add(`px-[${fmt(r)}px]`);
+      if (t !== 0) classes.add(`py-[${fmtNum(t)}px]`);
+      if (r !== 0) classes.add(`px-[${fmtNum(r)}px]`);
     } else {
-      if (t !== 0) classes.add(`pt-[${fmt(t)}px]`);
-      if (r !== 0) classes.add(`pr-[${fmt(r)}px]`);
-      if (b !== 0) classes.add(`pb-[${fmt(b)}px]`);
-      if (l !== 0) classes.add(`pl-[${fmt(l)}px]`);
+      if (t !== 0) classes.add(`pt-[${fmtNum(t)}px]`);
+      if (r !== 0) classes.add(`pr-[${fmtNum(r)}px]`);
+      if (b !== 0) classes.add(`pb-[${fmtNum(b)}px]`);
+      if (l !== 0) classes.add(`pl-[${fmtNum(l)}px]`);
     }
   }
 
@@ -662,10 +658,22 @@ export async function layoutToTailwindClasses(layout: LayoutInfo, extraCss: stri
     classes.add('grow');
     classes.add('min-w-0');
     classes.add('min-h-0');
+    omit.flexGrow = true;
+    omit.minWidth = true;
+    omit.minHeight = true;
   }
-  if (typeof layout.flexShrink === 'number' && layout.flexShrink === 0) classes.add('shrink-0');
-  if (layout.flexBasis === 0) classes.add('basis-0');
-  if (layout.flexBasis === 'auto') classes.add('basis-auto');
+  if (typeof layout.flexShrink === 'number' && layout.flexShrink === 0) {
+    classes.add('shrink-0');
+    omit.flexShrink = true;
+  }
+  if (layout.flexBasis === 0) {
+    classes.add('basis-0');
+    omit.flexBasis = true;
+  }
+  if (layout.flexBasis === 'auto') {
+    classes.add('basis-auto');
+    omit.flexBasis = true;
+  }
   const asMap: Record<string, string> = {
     'flex-start': 'self-start',
     'flex-end': 'self-end',
@@ -673,10 +681,13 @@ export async function layoutToTailwindClasses(layout: LayoutInfo, extraCss: stri
     'stretch': 'self-stretch',
     'baseline': 'self-baseline',
   };
-  if (layout.alignSelf && asMap[layout.alignSelf]) classes.add(asMap[layout.alignSelf]);
+  if (layout.alignSelf && asMap[layout.alignSelf]) {
+    classes.add(asMap[layout.alignSelf]);
+    omit.alignSelf = true;
+  }
 
   // Visual CSS → utility classes（并返回剩余 CSS）
   const util = await cssToTailwindClasses(extraCss || '');
   for (const c of util.classNames) classes.add(c);
-  return { classNames: Array.from(classes).sort(), remainingCss: util.remainingCss };
+  return { classNames: Array.from(classes).sort(), remainingCss: util.remainingCss, omitFromInline: omit };
 }

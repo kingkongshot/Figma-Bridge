@@ -89,6 +89,19 @@ export type DocumentConfig = {
   contentLayerStyle?: string;
 };
 
+export type LayoutCssOmit = {
+  position?: boolean;
+  left?: boolean;
+  top?: boolean;
+  width?: boolean;
+  height?: boolean;
+  flexGrow?: boolean;
+  flexShrink?: boolean;
+  flexBasis?: boolean;
+  minWidth?: boolean;
+  minHeight?: boolean;
+  alignSelf?: boolean;
+};
 export type RenderBoxOptions = {
   outerOverflowVisible?: boolean;
   innerClassName?: string;
@@ -96,6 +109,7 @@ export type RenderBoxOptions = {
   omitPosition?: boolean;
   mode?: 'content' | 'debug';
   hasStroke?: boolean;
+  layoutOmit?: LayoutCssOmit;
 };
 export type RenderBoxConfig = {
   className: string;

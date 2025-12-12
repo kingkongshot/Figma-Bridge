@@ -1,8 +1,8 @@
-import type { RenderNodeIR, DocumentConfig, Viewport, Bounds, Rect, RenderBoxConfig, RenderBoxOptions, PreviewBuildInput } from './types';
+import type { RenderNodeIR, DocumentConfig, Viewport, Bounds, Rect, RenderBoxConfig, PreviewBuildInput, LayoutCssOmit } from './types';
 import { CssCollector } from '../utils/cssCollector';
 import { buildSharedClasses, generateClassCss } from '../utils/classExtractor';
 import { optimizeBoxCss } from '../utils/css-optimizer';
-import { layoutToTailwindClasses, cssToTailwindClasses, ClassStrategy } from '../utils/tailwind-mapper';
+import { layoutToTailwindClasses, cssToTailwindClasses } from '../utils/tailwind-mapper';
 import { buildUtilityCssSelective } from '../utils/utility-css';
 import { buildHtmlHead, buildHtmlBody, buildBaseStyles } from '../utils/html-builder';
 import { splitClassTokens } from '../utils/css-parser';
@@ -98,20 +98,6 @@ function h(tag: string, attrs: Record<string, string | number | undefined> | nul
   return `<${tag}${attrStr}>${inner}</${tag}>`;
 }
 
-type LayoutCssOmit = {
-  position?: boolean;
-  left?: boolean;
-  top?: boolean;
-  width?: boolean;
-  height?: boolean;
-  flexGrow?: boolean;
-  flexShrink?: boolean;
-  flexBasis?: boolean;
-  minWidth?: boolean;
-  minHeight?: boolean;
-  alignSelf?: boolean;
-};
-
 function layoutToCss(layout: RenderNodeIR['layout'], omit?: LayoutCssOmit): {
   containerCss: string;
   positioningCss: string;
@@ -192,71 +178,6 @@ function layoutToCss(layout: RenderNodeIR['layout'], omit?: LayoutCssOmit): {
   };
 }
 
-function computeLayoutCssOmit(mode: RenderMode | undefined, className: string | undefined): LayoutCssOmit | undefined {
-  if (mode !== 'content' || !className) return undefined;
-  const tokens = className.split(/\s+/).filter(Boolean);
-
-  let omitPosition = false;
-  let omitLeft = false;
-  let omitTop = false;
-  let omitWidth = false;
-  let omitHeight = false;
-  let omitMinWidth = false;
-  let omitMinHeight = false;
-  let omitFlexShrink = false;
-  let omitAlignSelf = false;
-  let omitFlexGrow = false;
-  let omitFlexBasis = false;
-
-  for (const c of tokens) {
-    if (c === 'absolute' || c === 'relative') omitPosition = true;
-    else if (/^left-\[.+\]$/.test(c)) omitLeft = true;
-    else if (/^top-\[.+\]$/.test(c)) omitTop = true;
-    else if (/^w-\[.+\]$/.test(c)) omitWidth = true;
-    else if (/^h-\[.+\]$/.test(c)) omitHeight = true;
-    else if (c === 'min-w-0') omitMinWidth = true;
-    else if (c === 'min-h-0') omitMinHeight = true;
-    else if (c === 'shrink-0') omitFlexShrink = true;
-    else if (c === 'grow') omitFlexGrow = true;
-    else if (c === 'basis-0' || c === 'basis-auto') omitFlexBasis = true;
-    else if (
-      c === 'self-stretch' ||
-      c === 'self-start' ||
-      c === 'self-end' ||
-      c === 'self-center' ||
-      c === 'self-baseline'
-    ) omitAlignSelf = true;
-  }
-
-  if (
-    !omitPosition &&
-    !omitLeft &&
-    !omitTop &&
-    !omitWidth &&
-    !omitHeight &&
-    !omitMinWidth &&
-    !omitMinHeight &&
-    !omitFlexShrink &&
-    !omitAlignSelf &&
-    !omitFlexGrow &&
-    !omitFlexBasis
-  ) return undefined;
-
-  return {
-    position: omitPosition,
-    left: omitLeft,
-    top: omitTop,
-    width: omitWidth,
-    height: omitHeight,
-    minWidth: omitMinWidth,
-    minHeight: omitMinHeight,
-    flexShrink: omitFlexShrink,
-    alignSelf: omitAlignSelf,
-    flexGrow: omitFlexGrow,
-    flexBasis: omitFlexBasis,
-  };
-}
-
 type RenderMode = 'content' | 'debug';
 type RenderContext = {
   stylePrefix: string;
@@ -267,6 +188,7 @@ type RenderContext = {
   omitPositionOverride?: boolean;
   usedClasses?: Set<string>;
   sizeFreq?: SizeFreq;
+  layoutOmit?: LayoutCssOmit;
 };
 
 function getRootPadding(irNodes: RenderNodeIR[]): { left: number; top: number } | null {
@@ -392,7 +314,7 @@ function renderWrapperBox(cfg: RenderBoxConfig): string {
   const { className, id, layout, boxCss, innerContent } = cfg;
   const opts = cfg.options;
   const t = layout.transform2x2;
-  const cssSeg = layoutToCss(layout, computeLayoutCssOmit(opts?.mode, className));
+  const cssSeg = layoutToCss(layout, opts?.layoutOmit);
   const { outerCss, innerCss } = splitBoxCssForWrapper(boxCss);
 
   const baseStart = `${cssSeg.positioningCss}${opts?.outerOverflowVisible ? 'overflow:visible;' : ''}`;
@@ -492,7 +414,7 @@ function renderSingleBox(cfg: RenderBoxConfig): string {
   if (cleaned.hasAutoWidth) adjustedLayout.width = 'auto' as any;
   if (cleaned.hasAutoHeight) adjustedLayout.height = 'auto' as any;
 
-  const cssSeg = layoutToCss(adjustedLayout, computeLayoutCssOmit(opts?.mode, className));
+  const cssSeg = layoutToCss(adjustedLayout, opts?.layoutOmit);
   const isIdentity = t.a === 1 && t.b === 0 && t.c === 0 && t.d === 1;
   const transformPart = isIdentity ? '' : cssSeg.transformCss;
   const posPart = opts?.omitPosition ? '' : cssSeg.positioningCss;
@@ -532,10 +454,12 @@ async function renderFrameNode(ctx: RenderContext): Promise<string> {
   boxCss = optimizeBoxCss(boxCss, cssCtx);
   const hasWrapper = !!(layout as any).wrapper;
   const utilClasses: string[] = [];
+  let layoutOmit: LayoutCssOmit | undefined;
   if (ctx.mode === 'content' && !hasWrapper) {
     const util = await layoutToTailwindClasses(layout, boxCss || '');
     if (util.classNames.length) utilClasses.push(...util.classNames);
     boxCss = util.remainingCss;
+    layoutOmit = util.omitFromInline;
     if (ctx.usedClasses && util.classNames.length) {
       util.classNames.forEach((c: string) => ctx.usedClasses!.add(c));
     }
@@ -568,7 +492,6 @@ async function renderFrameNode(ctx: RenderContext): Promise<string> {
     boxCss = res.newCss;
   }
   const className = classNames.join(' ');
-  // Why: for boxes with visible geometry (padding/bg/radius) force layout size to keep debug overlay aligned; others let children size naturally
   let debugOverrideSize = false;
   if (ctx.mode === 'debug' && !hasWrapper) {
     const cssForCheck = boxCss || '';
@@ -585,19 +508,17 @@ async function renderFrameNode(ctx: RenderContext): Promise<string> {
     layout,
     boxCss,
     innerContent: innerHtml,
-    options: { outerOverflowVisible: true, innerClassName: ctx.mode === 'debug' ? 'debug-box' : undefined, debugOverrideSize, omitPosition, mode: ctx.mode, hasStroke }
+    options: { outerOverflowVisible: true, innerClassName: ctx.mode === 'debug' ? 'debug-box' : undefined, debugOverrideSize, omitPosition, mode: ctx.mode, hasStroke, layoutOmit }
   });
 }
 
 async function renderTextNode(ctx: RenderContext): Promise<string> {
   if (!ctx.irNode) throw new Error('renderTextNode: irNode missing');
-  // Why: keep text content in debug mode for accurate flexbox sizing, but make it invisible
   const rawTextHtml = (ctx.irNode.content.type === 'text' ? ctx.irNode.content.html : '');
   let textHtml: string;
   if (ctx.mode === 'debug') {
     textHtml = rawTextHtml ? `<span style="visibility:hidden;">${rawTextHtml}</span>` : '';
   } else if (ctx.mode === 'content' && ctx.irNode.text) {
-    // Upstream generation: regenerate text HTML with Tailwind classes from original text data
     textHtml = await renderTextSegmentsWithClasses(ctx.irNode.text, ctx.usedClasses);
   } else {
     textHtml = rawTextHtml;
@@ -612,16 +533,18 @@ async function renderTextNode(ctx: RenderContext): Promise<string> {
   };
   boxCss = optimizeBoxCss(boxCss, cssCtx);
   const utilClassesT: string[] = [];
+  let layoutOmit: LayoutCssOmit | undefined;
   if (ctx.mode === 'content') {
     const layout = ctx.irNode.layout;
     const util = await layoutToTailwindClasses(layout, boxCss || '');
     if (util.classNames.length) utilClassesT.push(...util.classNames);
     boxCss = util.remainingCss;
+    layoutOmit = util.omitFromInline;
     if (ctx.usedClasses && util.classNames.length) {
       util.classNames.forEach((c: string) => ctx.usedClasses!.add(c));
     }
   }
-  
+
   if (ctx.mode === 'debug') {
     var classNames: string[] = ['debug-box'];
   } else {
@@ -647,7 +570,7 @@ async function renderTextNode(ctx: RenderContext): Promise<string> {
     layout: ctx.irNode.layout,
     boxCss,
     innerContent: textHtml,
-    options: { innerClassName: ctx.mode === 'debug' ? 'debug-box' : undefined, debugOverrideSize, omitPosition, mode: ctx.mode, hasStroke }
+    options: { innerClassName: ctx.mode === 'debug' ? 'debug-box' : undefined, debugOverrideSize, omitPosition, mode: ctx.mode, hasStroke, layoutOmit }
   });
 }
 
