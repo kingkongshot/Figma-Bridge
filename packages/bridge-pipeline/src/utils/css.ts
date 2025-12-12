@@ -355,18 +355,17 @@ export function collectTextCss(node: { text?: FigmaText }): TextCssResult {
   const parts: string[] = [];
   const align = normUpper(text.textAlignHorizontal);
   
-  // Why: preserve explicit breaks; WIDTH 视为单行，其它允许换行
+  // Why: preserve explicit breaks; auto-width modes (WIDTH, WIDTH_AND_HEIGHT) should not wrap
   const autoResize = normUpper((text as any).textAutoResize);
   const truncation = normUpper((text as any).textTruncation);
   const shouldTruncate = truncation === 'ENDING' || autoResize === 'TRUNCATE';
   if (shouldTruncate) {
     parts.push('white-space:nowrap;overflow:hidden;text-overflow:ellipsis;');
-  } else if (autoResize === 'WIDTH') {
-    // Single-line, width-driven text: keep pre-style spacing but avoid soft wraps
+  } else if (autoResize === 'WIDTH' || autoResize === 'WIDTH_AND_HEIGHT') {
+    // Auto-width text: single-line, never soft-wrap
     parts.push('white-space:pre;');
   } else {
-    // Multi-line / auto-height text (including WIDTH_AND_HEIGHT) should wrap
-    // naturally while preserving explicit spaces and line breaks.
+    // HEIGHT mode: fixed width, auto height → allow natural line wrapping
     parts.push('white-space:pre-wrap;');
   }
   
