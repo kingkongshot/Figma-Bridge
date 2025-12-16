@@ -409,10 +409,10 @@ function renderSingleBox(cfg: RenderBoxConfig): string {
   const t = layout.transform2x2;
   const cleaned = cleanBoxCssForSingleBox(boxCss);
 
-  // Why: respect textAutoResize: auto width/height should not be constrained to renderBounds
+  // Why: respect textAutoResize: auto sizing must stay in layout.cssWidth/cssHeight
   const adjustedLayout = { ...layout };
-  if (cleaned.hasAutoWidth) adjustedLayout.width = 'auto' as any;
-  if (cleaned.hasAutoHeight) adjustedLayout.height = 'auto' as any;
+  if (cleaned.hasAutoWidth) adjustedLayout.cssWidth = 'auto';
+  if (cleaned.hasAutoHeight) adjustedLayout.cssHeight = 'auto';
 
   const cssSeg = layoutToCss(adjustedLayout, opts?.layoutOmit);
   const isIdentity = t.a === 1 && t.b === 0 && t.c === 0 && t.d === 1;

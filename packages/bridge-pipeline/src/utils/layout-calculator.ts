@@ -25,6 +25,23 @@ function isTextNodeWithContent(node: FigmaNode): boolean {
   return isTextNode(node) && !!node.text;
 }
 
+function applyTextAutoResizeSizing(layout: LayoutInfo, node: FigmaNode): void {
+  if (!isTextNodeWithContent(node)) return;
+  const autoResize = normUpper((node as any).text?.textAutoResize);
+  if (autoResize === 'WIDTH') {
+    if (!layout.cssWidth) layout.cssWidth = 'auto';
+    return;
+  }
+  if (autoResize === 'HEIGHT') {
+    if (!layout.cssHeight) layout.cssHeight = 'auto';
+    return;
+  }
+  if (autoResize === 'WIDTH_AND_HEIGHT') {
+    if (!layout.cssWidth) layout.cssWidth = 'auto';
+    if (!layout.cssHeight) layout.cssHeight = 'auto';
+  }
+}
+
 function determineKind(node: FigmaNode): 'frame' | 'shape' | 'text' | 'svg' {
   if (node?.svgContent || node?.svgId) return 'svg';
   if (isTextNodeWithContent(node)) return 'text';
@@ -311,6 +328,9 @@ export function computeLayout(
   if (typeof node.height === 'string' && !layout.cssHeight) {
     layout.cssHeight = node.height;
   }
+  // TextAutoResize is layout semantics, not visual CSS.
+  // Keep geometry width/height numeric for computation; use cssWidth/cssHeight for rendered sizing.
+  applyTextAutoResizeSizing(layout, node);
   if (kind === 'frame') {
     const hasWrapper = !!layout.wrapper;
     applyContainerSemantics(node, layout, hasWrapper);

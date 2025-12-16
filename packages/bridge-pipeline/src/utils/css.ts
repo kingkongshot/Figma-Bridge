@@ -347,11 +347,11 @@ export function segmentToInlineCss(seg: FigmaText['segments'] extends (infer S)[
   return parts.join('');
 }
 
-export type TextCssResult = { css: string; usesFlexColumn: boolean; autoWidth: boolean; autoHeight: boolean };
+export type TextCssResult = { css: string; usesFlexColumn: boolean };
 
 export function collectTextCss(node: { text?: FigmaText }): TextCssResult {
   const text = node?.text;
-  if (!text) return { css: '', usesFlexColumn: false, autoWidth: false, autoHeight: false };
+  if (!text) return { css: '', usesFlexColumn: false };
   const parts: string[] = [];
   const align = normUpper(text.textAlignHorizontal);
   
@@ -387,17 +387,7 @@ export function collectTextCss(node: { text?: FigmaText }): TextCssResult {
   if (typeof text.paragraphIndent === 'number' && text.paragraphIndent !== 0) {
     parts.push(`text-indent:${text.paragraphIndent}px;`);
   }
-  let autoWidth = false;
-  let autoHeight = false;
-  if (autoResize === 'WIDTH') {
-    autoWidth = true;
-  } else if (autoResize === 'WIDTH_AND_HEIGHT') {
-    autoWidth = true;
-    autoHeight = true;
-  } else if (autoResize === 'HEIGHT') {
-    autoHeight = true;
-  }
-  return { css: parts.join(''), usesFlexColumn, autoWidth, autoHeight };
+  return { css: parts.join(''), usesFlexColumn };
 }
 
 export function renderTextSegments(text: FigmaText): string {

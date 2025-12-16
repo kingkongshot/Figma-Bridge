@@ -106,20 +106,14 @@ function collectStyle(
   cssCollector: CssCollector,
   inheritedShadows?: ShadowEffect[] | null,
   effectsMode?: 'self' | 'inherit'
-): { boxCss: string; shouldInheritShadows: boolean; nodeHasFills: boolean; autoWidth?: boolean; autoHeight?: boolean } {
+): { boxCss: string; shouldInheritShadows: boolean; nodeHasFills: boolean } {
   if (kind !== 'frame') {
     let boxCss = collectBoxCssForNode(node, cssCollector, inheritedShadows);
-    let autoWidth: boolean | undefined;
-    let autoHeight: boolean | undefined;
     if (kind === 'text' && node.text) {
       const textResult = collectTextCss(node);
       boxCss += textResult.css;
-      autoWidth = textResult.autoWidth;
-      autoHeight = textResult.autoHeight;
-      if (autoWidth) boxCss += 'width:auto;';
-      if (autoHeight) boxCss += 'height:auto;';
     }
-    return { boxCss, shouldInheritShadows: false, nodeHasFills: false, autoWidth, autoHeight };
+    return { boxCss, shouldInheritShadows: false, nodeHasFills: false };
   }
 
   const subtree = node;
