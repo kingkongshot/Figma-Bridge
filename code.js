@@ -1,4 +1,4 @@
-figma.showUI(__html__, { width: 280, height: 160, themeColors: true });
+figma.showUI(__html__, { width: 360, height: 520, themeColors: true });
 
 function sanitizeImageId(hash) {
   if (!hash || typeof hash !== 'string') return null;
@@ -571,11 +571,11 @@ async function collectNode(n, opts) {
   return entry;
 }
 
-async function buildCompositionFromSelection() {
-  const selection = figma.currentPage.selection || [];
-  if (!selection.length) return null;
+async function buildCompositionFromNodes(nodes, compositionName) {
+  const sourceNodes = Array.isArray(nodes) ? nodes : [];
+  if (!sourceNodes.length) return null;
 
-  const sorted = sortByDocumentOrder(selection);
+  const sorted = sortByDocumentOrder(sourceNodes);
   let renderables = expandGroupsWithAncestors(sorted);
   if (!renderables.length) return null;
 
@@ -613,13 +613,18 @@ async function buildCompositionFromSelection() {
   const root = {
     schemaVersion: '1.0',
     kind: 'composition',
-    name: `Composition (${children.length} items)`,
+    name: compositionName || `Composition (${children.length} items)`,
     absOrigin: { x: offsetX, y: offsetY },
     bounds: { x: 0, y: 0, width: boundsWidth, height: boundsHeight },
     children
   };
 
   return root;
+}
+
+async function buildCompositionFromSelection() {
+  const selection = figma.currentPage.selection || [];
+  return buildCompositionFromNodes(selection);
 }
 
 function collectImageIdsFromComposition(comp) {
@@ -651,9 +656,86 @@ function collectImageIdsFromComposition(comp) {
 }
 
 async function notifyComposition() {
-  const composition = await buildCompositionFromSelection();
+  const selection = figma.currentPage.selection || [];
+  const composition = await buildCompositionFromNodes(selection);
   const imageIds = composition ? collectImageIdsFromComposition(composition) : [];
   figma.ui.postMessage({ type: 'send-composition', composition, imageIds });
+  figma.ui.postMessage({
+    type: 'send-export-selection',
+    items: selection
+      .filter((node) => !!node && node.visible !== false)
+      .map((node) => ({ id: node.id, name: typeof node.name === 'string' ? node.name : node.id, type: node.type })),
+  });
+}
+
+const batchPageAckWaiters = new Map();
+
+function waitForBatchPageAck(pageId, timeoutMs) {
+  return new Promise((resolve) => {
+    const timeout = setTimeout(() => {
+      batchPageAckWaiters.delete(pageId);
+      resolve({ success: false, error: 'Timed out waiting for export acknowledgement' });
+    }, timeoutMs || 120000);
+    batchPageAckWaiters.set(pageId, (result) => {
+      clearTimeout(timeout);
+      batchPageAckWaiters.delete(pageId);
+      resolve(result || { success: false, error: 'Missing export acknowledgement' });
+    });
+  });
+}
+
+async function exportSelectedNodes(nodeIds, targetDir) {
+  const requestedIds = Array.isArray(nodeIds) ? nodeIds.filter((id) => typeof id === 'string') : [];
+  const nodes = (figma.currentPage.selection || []).filter((node) => requestedIds.includes(node.id) && node.visible !== false);
+  const total = nodes.length;
+  const summary = { total, exported: 0, skipped: 0, failed: 0, results: [] };
+  const usedFolderNames = new Map();
+
+  figma.ui.postMessage({ type: 'batch-export:started', total });
+  for (let index = 0; index < nodes.length; index += 1) {
+    const node = nodes[index];
+    const pageName = typeof node.name === 'string' ? node.name : node.id;
+    const baseFolderName = String(pageName || 'selection').trim() || 'selection';
+    const previousCount = usedFolderNames.get(baseFolderName) || 0;
+    usedFolderNames.set(baseFolderName, previousCount + 1);
+    const exportFolderName = previousCount > 0 ? `${baseFolderName} (${previousCount + 1})` : baseFolderName;
+    try {
+      const composition = await buildCompositionFromNodes([node], pageName);
+      if (!composition || !Array.isArray(composition.children) || composition.children.length === 0) {
+        summary.skipped += 1;
+        summary.results.push({ pageId: node.id, pageName, status: 'skipped', reason: 'No visible layers' });
+        figma.ui.postMessage({ type: 'batch-export:page-skipped', pageId: node.id, pageName, index, total, reason: 'No visible layers' });
+        continue;
+      }
+
+      const imageIds = collectImageIdsFromComposition(composition);
+      figma.ui.postMessage({
+        type: 'batch-export-page',
+        pageId: node.id,
+        pageName,
+        composition,
+        imageIds,
+        targetDir,
+        exportFolderName,
+        index,
+        total,
+      });
+      const result = await waitForBatchPageAck(node.id);
+      if (result && result.success) {
+        summary.exported += 1;
+        summary.results.push({ pageId: node.id, pageName, status: 'exported' });
+      } else {
+        summary.failed += 1;
+        summary.results.push({ pageId: node.id, pageName, status: 'failed', error: result && result.error });
+      }
+    } catch (error) {
+      summary.failed += 1;
+      const message = error && error.message ? error.message : String(error);
+      summary.results.push({ pageId: node.id, pageName, status: 'failed', error: message });
+      figma.ui.postMessage({ type: 'batch-export:page-failed', pageId: node.id, pageName, index, total, error: message });
+    }
+  }
+  figma.ui.postMessage({ type: 'batch-export:finished', summary });
 }
 
 // Initial send
@@ -665,6 +747,15 @@ figma.on('selectionchange', () => {
 
 figma.ui.onmessage = async (msg) => {
   if (!msg) return;
+  if (msg.type === 'batch-export-page:ack') {
+    const resolver = batchPageAckWaiters.get(msg.pageId);
+    if (resolver) resolver({ success: msg.success === true, error: msg.error });
+    return;
+  }
+  if (msg.type === 'batch-export-selection') {
+    await exportSelectedNodes(msg.nodeIds, msg.targetDir);
+    return;
+  }
   if (msg.type === 'close') {
     figma.closePlugin();
     return;

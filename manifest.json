@@ -14,7 +14,7 @@
   "networkAccess": {
     "allowedDomains": ["none"],
     "devAllowedDomains": [
-      "http://localhost:7788"
+      "http://localhost:7789"
     ],
     "reasoning": "Local development server for live preview"
   }

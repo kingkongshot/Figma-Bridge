@@ -54,7 +54,7 @@ npm install
 npm run dev
 ```
 
-服务器将在 `http://localhost:7788` 启动。在浏览器中打开此 URL 以访问预览界面。
+服务器将在 `http://localhost:7789` 启动。在浏览器中打开此 URL 以访问预览界面。
 
 ### 使用 Figma 插件
 

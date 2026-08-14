@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
-import { exec } from 'child_process';
+import { exec, execFile } from 'child_process';
 import { processBatch as processImageBatch, ensureUploadsDir, listMissing } from './imageService';
 import type { ImageItem } from './imageService';
 import { figmaToHtml, normalizeComposition, compositionToIR, normalizeHtml } from 'figma-html-bridge';
@@ -35,7 +35,7 @@ function loadEnvFile() {
 loadEnvFile();
 
 const app = express();
-const PORT = 7788;
+const PORT = 7789;
 
 const corsOptions: cors.CorsOptions = {
   origin: true,
@@ -121,6 +121,38 @@ app.get('/api/config', (_req, res) => {
   });
 });
 
+// The plugin iframe cannot reliably write to arbitrary local directories. On
+// Windows, let the local companion server open the native folder picker and
+// return the selected absolute path to the plugin UI.
+app.post('/api/select-directory', (_req, res) => {
+  if (process.platform !== 'win32') {
+    res.status(501).json({ error: 'Native folder selection is currently supported on Windows only' });
+    return;
+  }
+
+  const script = [
+    'Add-Type -AssemblyName System.Windows.Forms',
+    '$OutputEncoding = [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)',
+    '$dialog = New-Object System.Windows.Forms.FolderBrowserDialog',
+    '$dialog.Description = "Select a folder for Figma Bridge export"',
+    '$dialog.ShowNewFolderButton = $true',
+    'if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Out.Write($dialog.SelectedPath) }',
+  ].join('; ');
+
+  execFile('powershell.exe', ['-NoProfile', '-STA', '-Command', script], { windowsHide: true, maxBuffer: 1024 * 1024 }, (error, stdout) => {
+    if (error) {
+      res.status(500).json({ error: 'Failed to open folder picker' });
+      return;
+    }
+    const selectedPath = String(stdout || '').trim();
+    if (!selectedPath) {
+      res.json({ cancelled: true, path: '' });
+      return;
+    }
+    res.json({ cancelled: false, path: selectedPath });
+  });
+});
+
 function ensureDebugDir() {
   if (!DEBUG_ENABLED) return;
   fs.rmSync(DEBUG_LATEST, { recursive: true, force: true });
@@ -203,15 +235,21 @@ const OUTPUT_DIR = path.join(process.cwd(), 'output');
 const SVGS_DIR = path.join(process.cwd(), 'temp', 'svgs');
 const PREVIEW_ASSETS_DIR = path.join(process.cwd(), 'temp', 'preview');
 
+function sanitizeExportFolderName(raw: unknown): string {
+  const value = String(raw || '').trim().replace(/[<>:"/\\|?*\u0000-\u001F]/g, '_').replace(/[. ]+$/g, '');
+  if (!value || value === '.' || value === '..') return 'page';
+  return value.slice(0, 120);
+}
+
 let globalSettings = {
   useOnlineFonts: true
 };
 
-function ensureOutputDir() {
+function ensureOutputDir(targetDir = OUTPUT_DIR, clean = targetDir === OUTPUT_DIR) {
   try {
-    fs.rmSync(OUTPUT_DIR, { recursive: true, force: true });
-    fs.mkdirSync(path.join(OUTPUT_DIR, 'images'), { recursive: true });
-    fs.mkdirSync(path.join(OUTPUT_DIR, 'svgs'), { recursive: true });
+    if (clean) fs.rmSync(targetDir, { recursive: true, force: true });
+    fs.mkdirSync(path.join(targetDir, 'images'), { recursive: true });
+    fs.mkdirSync(path.join(targetDir, 'svgs'), { recursive: true });
   } catch (e) {
     // ignore: non-critical output dir preparation error; API will still respond
   }
@@ -297,14 +335,14 @@ ${contentHtml}
   return { html, viewportWidth, viewportHeight };
 }
 
-function writeOutputPackage(bodyHtml: string, cssText: string, headLinks: string, imageIds: string[], svgFiles: string[], baseWidth: number, baseHeight: number) {
+function writeOutputPackage(bodyHtml: string, cssText: string, headLinks: string, imageIds: string[], svgFiles: string[], baseWidth: number, baseHeight: number, targetDir = OUTPUT_DIR): boolean {
   try {
-    ensureOutputDir();
+    ensureOutputDir(targetDir, targetDir === OUTPUT_DIR);
     for (const id of imageIds) {
       if (typeof id !== 'string') continue;
       const src = path.join(UPLOAD_DIR, `${id}.png`);
       if (fs.existsSync(src)) {
-        const dst = path.join(OUTPUT_DIR, 'images', `${id}.png`);
+        const dst = path.join(targetDir, 'images', `${id}.png`);
         try {
           fs.copyFileSync(src, dst);
         } catch (e) {
@@ -315,7 +353,7 @@ function writeOutputPackage(bodyHtml: string, cssText: string, headLinks: string
     for (const name of svgFiles || []) {
       const src = path.join(SVGS_DIR, name);
       if (fs.existsSync(src)) {
-        const dst = path.join(OUTPUT_DIR, 'svgs', name);
+        const dst = path.join(targetDir, 'svgs', name);
         try {
           fs.copyFileSync(src, dst);
         } catch (e) {
@@ -325,7 +363,7 @@ function writeOutputPackage(bodyHtml: string, cssText: string, headLinks: string
     }
     const { formatCss, formatHtml } = require('./utils/format');
     const formattedCss = formatCss(cssText);
-    fs.writeFileSync(path.join(OUTPUT_DIR, 'styles.css'), formattedCss, 'utf8');
+    fs.writeFileSync(path.join(targetDir, 'styles.css'), formattedCss, 'utf8');
 
     const viewportStyles = `
     html, body {
@@ -371,10 +409,12 @@ function writeOutputPackage(bodyHtml: string, cssText: string, headLinks: string
       if (post && post.html) rawHtmlDoc = post.html;
     } catch { }
     const htmlDoc = formatHtml(rawHtmlDoc);
-    fs.writeFileSync(path.join(OUTPUT_DIR, 'index.html'), htmlDoc, 'utf8');
+    fs.writeFileSync(path.join(targetDir, 'index.html'), htmlDoc, 'utf8');
     // output package written
+    return true;
   } catch (e) {
     // ignore: output package write failure will be surfaced via API usage
+    return false;
   }
 }
 
@@ -564,6 +604,11 @@ app.get('/api/languages/:code', (req, res) => {
 app.post('/api/composition', async (req, res) => {
   const originalPayload = req.body ?? null;
   const composition = originalPayload?.composition ?? null;
+  const exportBaseDir = typeof originalPayload?.exportBaseDir === 'string' ? originalPayload.exportBaseDir.trim() : '';
+  const exportFolderName = typeof originalPayload?.exportFolderName === 'string' ? originalPayload.exportFolderName : '';
+  const exportDir = exportBaseDir && exportFolderName
+    ? path.join(path.resolve(exportBaseDir), sanitizeExportFolderName(exportFolderName))
+    : undefined;
 
   if (!composition) {
     res.status(400).json({ error: 'composition payload missing' });
@@ -678,7 +723,11 @@ app.post('/api/composition', async (req, res) => {
     const svgs = Array.isArray((lastResult as any)?.assets?.svgs) ? (lastResult as any).assets.svgs : [];
     const baseWidth = (lastResult.content as any).baseWidth || renderRes.baseWidth;
     const baseHeight = (lastResult.content as any).baseHeight || renderRes.baseHeight;
-    writeOutputPackage(lastResult.content.bodyHtml, lastResult.content.cssText, headLinks2, images, svgs, baseWidth, baseHeight);
+    const wrotePackage = writeOutputPackage(lastResult.content.bodyHtml, lastResult.content.cssText, headLinks2, images, svgs, baseWidth, baseHeight, exportDir);
+    if (exportDir && !wrotePackage) {
+      res.status(500).json({ error: 'Failed to write exported page package' });
+      return;
+    }
   } catch (e) {
     // ignore content build failure
   }

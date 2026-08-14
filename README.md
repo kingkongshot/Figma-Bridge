@@ -53,7 +53,7 @@ npm install
 npm run dev
 ```
 
-The server will start at `http://localhost:7788`. Open this URL in your browser to access the preview interface.
+The server will start at `http://localhost:7789`. Open this URL in your browser to access the preview interface.
 
 ### Using the Figma Plugin
 
