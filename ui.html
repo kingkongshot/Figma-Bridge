@@ -1,302 +1,255 @@
 <!doctype html>
-<html lang="zh">
+<html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>BRIDGE — PLUGIN</title>
+    <title>Bridge</title>
     <style>
-      :root {
-        --bg: #ffffff;
-        --fg: #000000;
-      }
-      body {
-        margin: 0;
-        background: var(--bg);
-        color: var(--fg);
-        font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
-        letter-spacing: 0.05em;
-        text-transform: uppercase;
-        font-size: 12px;
-      }
-      main {
-        padding: 16px;
-        display: flex;
-        flex-direction: column;
-        gap: 16px;
-      }
-      .top-bar {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 16px;
-      }
-      .status {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        font-weight: 600;
-      }
-      .status span {
-        font-weight: 400;
-        letter-spacing: 0.03em;
-      }
-      .status .linked {
-        color: #00aa00;
-      }
-      .status .offline {
-        color: #cc0000;
-      }
-      .log {
-        padding: 4px 0;
-        font-weight: 500;
-        letter-spacing: 0.02em;
-        min-height: auto;
-      }
-      .btn {
-        background: var(--bg);
-        color: var(--fg);
-        border: 1px solid #000;
-        height: 44px;
-        font-family: inherit;
-        font-size: inherit;
-        letter-spacing: inherit;
-        text-transform: inherit;
-        font-weight: 600;
-        cursor: pointer;
-        width: 100%;
-      }
-      .btn:hover {
-        background: #000;
-        color: #fff;
-      }
-      .icon-links {
-        display: flex;
-        gap: 8px;
-        justify-content: center;
-        align-items: center;
-      }
-      .icon-btn {
-        background: var(--bg);
-        color: var(--fg);
-        border: 1px solid #000;
-        width: 24px;
-        height: 24px;
-        padding: 0;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        transition: all 0.15s;
-      }
-      .icon-btn:hover {
-        background: #000;
-      }
-      .icon-btn svg {
-        width: 12px;
-        height: 12px;
-        fill: var(--fg);
-        transition: fill 0.15s;
-      }
-      .icon-btn:hover svg {
-        fill: #fff;
-      }
+      :root { --bg: #fff; --fg: #111; --muted: #6b6b6b; --line: #111; --success: #087f23; --error: #b00020; }
+      body { margin: 0; background: var(--bg); color: var(--fg); font: 12px/1.45 "Microsoft YaHei UI", "PingFang SC", Arial, sans-serif; }
+      main { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+      .header { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); padding-bottom: 10px; }
+      .brand { font-weight: 700; letter-spacing: .04em; }
+      .connection { color: var(--muted); font-size: 11px; }
+      .connection.linked { color: var(--success); }
+      .connection.offline { color: var(--error); }
+      .btn { width: 100%; min-height: 40px; padding: 8px 12px; background: var(--bg); color: var(--fg); border: 1px solid var(--line); font: inherit; font-weight: 600; cursor: pointer; }
+      .btn:hover:not(:disabled) { background: var(--fg); color: var(--bg); }
+      .btn:disabled { color: #999; border-color: #aaa; cursor: default; }
+      .section { display: flex; flex-direction: column; gap: 8px; }
+      .section-title { font-weight: 700; letter-spacing: .04em; }
+      .selection-card { border: 1px solid var(--line); padding: 12px; display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+      .selection-count { font-size: 24px; line-height: 1; font-weight: 700; letter-spacing: -.04em; }
+      .selection-label { color: var(--muted); font-size: 11px; text-align: right; }
+      .selection-names { color: var(--muted); font-size: 11px; min-height: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .status { min-height: 18px; color: var(--muted); font-size: 11px; }
+      .status.error { color: var(--error); }
+      .status.success { color: var(--success); }
     </style>
   </head>
   <body>
     <main>
-      <div class="top-bar">
-        <div class="status">Server <span id="conn">CHECKING…</span></div>
-        <div class="icon-links">
-          <button class="icon-btn" onclick="window.open('https://x.com/naaaarukaru')" title="Follow on X">
-            <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-              <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
-            </svg>
-          </button>
-          <button class="icon-btn" onclick="window.open('https://github.com/kingkongshot/Figma-Bridge')" title="Star on GitHub">
-            <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-              <path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.17 6.839 9.49.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.603-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.463-1.11-1.463-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.831.092-.646.35-1.086.636-1.336-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0112 6.836c.85.004 1.705.114 2.504.336 1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.167 22 16.418 22 12c0-5.523-4.477-10-10-10z"/>
-            </svg>
-          </button>
-        </div>
+      <div class="header">
+        <div class="brand">BRIDGE</div>
+        <div id="conn" class="connection">正在连接本地服务…</div>
       </div>
-      <button class="btn" onclick="window.open('http://localhost:7788/index.html')">Open Preview</button>
+
+      <button class="btn" id="open-preview" type="button">打开实时预览</button>
+
+      <section class="section" aria-labelledby="export-title">
+        <div class="section-title" id="export-title">批量导出</div>
+        <div class="selection-card">
+          <div id="selection-count" class="selection-count">0</div>
+          <div id="selection-label" class="selection-label">未选择画布对象</div>
+        </div>
+        <div id="selection-names" class="selection-names">请在 Figma 画布中选择一个或多个 Frame / 图层。</div>
+        <button class="btn" id="batch-export-btn" type="button" disabled>选择文件夹并导出</button>
+        <div id="export-status" class="status"></div>
+      </section>
     </main>
 
     <script>
-      const server = 'http://localhost:7788';
+      const server = 'http://localhost:7789';
       const connEl = document.getElementById('conn');
+      const countEl = document.getElementById('selection-count');
+      const labelEl = document.getElementById('selection-label');
+      const namesEl = document.getElementById('selection-names');
+      const batchExportBtn = document.getElementById('batch-export-btn');
+      const exportStatusEl = document.getElementById('export-status');
+      let selectedItems = [];
+      let batchInProgress = false;
+      let pendingExportResolve = null;
+      let pendingPreviewResolve = null;
+
+      document.getElementById('open-preview').addEventListener('click', () => window.open(server + '/index.html'));
 
       async function ping() {
         try {
           const res = await fetch(server + '/health', { cache: 'no-store' });
-          if (res.ok) {
-            connEl.textContent = 'LINKED';
-            connEl.className = 'linked';
-          } else {
-            throw new Error('bad status');
-          }
-        } catch (e) {
-          connEl.textContent = 'OFFLINE';
-          connEl.className = 'offline';
+          if (!res.ok) throw new Error('服务不可用');
+          connEl.textContent = '本地服务已连接';
+          connEl.className = 'connection linked';
+        } catch (error) {
+          connEl.textContent = '本地服务未连接';
+          connEl.className = 'connection offline';
         }
       }
 
-      // 简单的一次性导出等待器
-      let pendingExportResolve = null;
-      async function requestExportMissing(ids) {
+      function updateSelection(items) {
+        selectedItems = Array.isArray(items) ? items : [];
+        const count = selectedItems.length;
+        countEl.textContent = String(count);
+        labelEl.textContent = count ? `已选择 ${count} 个画布对象` : '未选择画布对象';
+        namesEl.textContent = count
+          ? selectedItems.map((item) => item.name || item.id).join('、')
+          : '请在 Figma 画布中选择一个或多个 Frame / 图层。';
+        batchExportBtn.disabled = batchInProgress || count === 0;
+      }
+
+      function chunk(arr, size) {
+        const result = [];
+        for (let index = 0; index < arr.length; index += size) result.push(arr.slice(index, index + size));
+        return result;
+      }
+
+      function requestExportMissing(ids) {
         return new Promise((resolve) => {
           pendingExportResolve = resolve;
           parent.postMessage({ pluginMessage: { type: 'export-missing-images', ids } }, '*');
         });
       }
 
-      // Request Figma native render (ground truth)
-      let pendingPreviewResolve = null;
-      async function requestFigmaRender() {
+      function requestFigmaRender() {
         return new Promise((resolve) => {
           pendingPreviewResolve = resolve;
-          // 新事件名
           parent.postMessage({ pluginMessage: { type: 'export-figma-render' } }, '*');
         });
       }
 
+      async function uploadAssets(composition, imageIds) {
+        if (imageIds.length) {
+          let missing = imageIds;
+          try {
+            const response = await fetch(server + '/api/images/check', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: imageIds }) });
+            if (response.ok) {
+              const data = await response.json();
+              missing = Array.isArray(data.missing) ? data.missing : [];
+            }
+          } catch (error) { console.warn('[Bridge] 图片检查失败', error); }
+
+          if (missing.length) {
+            const result = await requestExportMissing(missing);
+            const items = Array.isArray(result.items) ? result.items : [];
+            for (const batch of chunk(items, 50)) {
+              if (!batch.length) continue;
+              const response = await fetch(server + '/api/images/batch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items: batch }) });
+              if (!response.ok) throw new Error(`图片上传失败（${response.status}）`);
+            }
+          }
+        }
+
+        const svgItems = [];
+        (function collectSvg(node) {
+          if (!node || node.visible === false) return;
+          if (typeof node._svgContent === 'string' && typeof node.svgId === 'string' && node._svgContent) svgItems.push({ id: node.svgId, data: node._svgContent });
+          if (Array.isArray(node.children)) node.children.forEach(collectSvg);
+        })({ children: composition.children });
+
+        const svgIds = Array.from(new Set(svgItems.map((item) => item.id)));
+        if (svgIds.length) {
+          const check = await fetch(server + '/api/svgs/check', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: svgIds }) });
+          let missingIds = svgIds;
+          if (check.ok) {
+            const data = await check.json();
+            missingIds = Array.isArray(data.missing) ? data.missing : [];
+          }
+          const missing = svgItems.filter((item) => missingIds.includes(item.id));
+          if (missing.length) {
+            const response = await fetch(server + '/api/svgs/batch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items: missing }) });
+            if (!response.ok) throw new Error(`SVG 上传失败（${response.status}）`);
+          }
+        }
+
+        (function cleanupSvg(node) {
+          if (!node || typeof node !== 'object') return;
+          delete node._svgContent;
+          delete node.svgContent;
+          if (Array.isArray(node.children)) node.children.forEach(cleanupSvg);
+        })({ children: composition.children });
+      }
+
+      async function processComposition(composition, imageIds, options) {
+        if (!composition || !Array.isArray(composition.children) || !composition.children.length) return false;
+        await uploadAssets(composition, imageIds);
+        let figmaRender = null;
+        if (options.includeFigmaRender) {
+          try {
+            const preview = await requestFigmaRender();
+            const base64 = preview && typeof preview.base64 === 'string' ? preview.base64 : '';
+            if (base64 && base64.length <= 8000000) figmaRender = { base64 };
+          } catch (error) { /* 对比截图不影响导出 */ }
+        }
+
+        const body = { composition, figmaRender };
+        if (options.exportBaseDir && options.exportFolderName) {
+          body.exportBaseDir = options.exportBaseDir;
+          body.exportFolderName = options.exportFolderName;
+        }
+        const response = await fetch(server + '/api/composition', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        if (!response.ok) throw new Error(`HTML 导出失败（${response.status}）`);
+        return true;
+      }
+
+      function setStatus(text, type) {
+        exportStatusEl.textContent = text || '';
+        exportStatusEl.className = `status${type ? ` ${type}` : ''}`;
+      }
+
+      async function startBatchExport() {
+        if (batchInProgress || !selectedItems.length) return;
+        batchInProgress = true;
+        updateSelection(selectedItems);
+        setStatus('正在打开文件夹选择器…');
+        try {
+          const response = await fetch(server + '/api/select-directory', { method: 'POST' });
+          if (!response.ok) throw new Error('无法打开文件夹选择器，请确认已重新启动本地服务。');
+          const selected = await response.json();
+          if (!selected || selected.cancelled || !selected.path) {
+            setStatus('已取消导出');
+            batchInProgress = false;
+            updateSelection(selectedItems);
+            return;
+          }
+          setStatus('正在准备导出…');
+          parent.postMessage({ pluginMessage: { type: 'batch-export-selection', nodeIds: selectedItems.map((item) => item.id), targetDir: selected.path } }, '*');
+        } catch (error) {
+          setStatus(error && error.message ? error.message : String(error), 'error');
+          batchInProgress = false;
+          updateSelection(selectedItems);
+        }
+      }
+
+      batchExportBtn.addEventListener('click', startBatchExport);
+
       window.onmessage = async (event) => {
         const msg = event.data && event.data.pluginMessage;
         if (!msg) return;
+        if (msg.type === 'send-export-selection') { updateSelection(msg.items); return; }
         if (msg.type === 'send-composition') {
-          const comp = msg.composition || null;
-          const imageIds = Array.isArray(msg.imageIds) ? msg.imageIds : [];
-          const hasChildren = comp && Array.isArray(comp.children) && comp.children.length > 0;
-          if (hasChildren) {
-            console.log('[UI] Received composition:', JSON.stringify(comp, null, 2).substring(0, 500));
-          }
-          if (!hasChildren) return; // 不再发送空 composition，避免 400 噪音
+          if (batchInProgress) return;
+          try { await processComposition(msg.composition || null, Array.isArray(msg.imageIds) ? msg.imageIds : [], { includeFigmaRender: true }); }
+          catch (error) { console.warn('[Bridge] 实时预览更新失败', error); }
+          return;
+        }
+        if (msg.type === 'batch-export:started') { setStatus(`开始导出，共 ${msg.total || 0} 个对象…`); return; }
+        if (msg.type === 'batch-export-page') {
+          setStatus(`正在导出 ${Number(msg.index || 0) + 1}/${msg.total || 0}：${msg.pageName || ''}`);
+          let success = false;
+          let error = '';
           try {
-            // ============ 1) 图片缺失检查与增量上传 ============
-            if (imageIds.length > 0) {
-              let missing = imageIds;
-              try {
-                const resp = await fetch(server + '/api/images/check', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ ids: imageIds })
-                });
-                if (resp.ok) {
-                  const data = await resp.json();
-                  missing = Array.isArray(data && data.missing) ? data.missing : [];
-                } else {
-                  // 失败则保守视为全部缺失
-                  missing = imageIds;
-                }
-              } catch (e) {
-                console.warn('[UI] /api/images/check failed, fallback to full export', e);
-                missing = imageIds;
-              }
-
-              if (missing.length > 0) {
-                // 请求插件导出缺失图片
-                const exportResult = await requestExportMissing(missing);
-                const items = Array.isArray(exportResult && exportResult.items) ? exportResult.items : [];
-                // 大批量时按块上传，避免超过服务器 25MB body 限制
-                function chunk(arr, size) {
-                  const out = [];
-                  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
-                  return out;
-                }
-                for (const batch of chunk(items, 50)) {
-                  if (batch.length === 0) continue;
-                  const resp = await fetch(server + '/api/images/batch', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ items: batch })
-                  });
-                  if (!resp.ok) {
-                    console.warn('[UI] /api/images/batch failed with status', resp.status);
-                  }
-                }
-              }
-            }
-            // ============ 2) SVG 缺失检查与增量上传 ============
-            try {
-              // 收集插件侧已导出的 SVG 数据（svgId 已在插件侧通过 FNV-1a 计算完毕）
-              // UI 侧只负责：检查缺失 → 上传 → 清理临时字段
-              const svgItems = [];
-              (function walk(n) {
-                if (!n || n.visible === false) return;
-                if (typeof n._svgContent === 'string' && typeof n.svgId === 'string' && n._svgContent) {
-                  svgItems.push({ id: n.svgId, data: n._svgContent });
-                }
-                if (Array.isArray(n.children)) n.children.forEach(walk);
-              })({ children: comp.children });
-              const svgIds = Array.from(new Set(svgItems.map(x => x.id)));
-              if (svgIds.length > 0) {
-                const checkResp = await fetch(server + '/api/svgs/check', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ids: svgIds }) });
-                let missingSvgIds = svgIds;
-                if (checkResp.ok) {
-                  const data = await checkResp.json();
-                  missingSvgIds = Array.isArray(data && data.missing) ? data.missing : [];
-                }
-                if (missingSvgIds.length > 0) {
-                  const toUpload = svgItems.filter(x => missingSvgIds.includes(x.id));
-                  if (toUpload.length > 0) {
-                    const uploadResp = await fetch(server + '/api/svgs/batch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items: toUpload }) });
-                    if (!uploadResp.ok) {
-                      console.error('[UI] svgs.batch failed:', uploadResp.status);
-                    }
-                  }
-                }
-              }
-              // 清理临时 SVG 内容，随后直接发送 comp
-              function cleanupSvgContent(n) {
-                if (!n || typeof n !== 'object') return;
-                delete n._svgContent;
-                delete n.svgContent;
-                if (Array.isArray(n.children)) n.children.forEach(cleanupSvgContent);
-              }
-              cleanupSvgContent({ children: comp.children });
-            } catch (e) {
-              console.warn('[UI] SVG upload/cleanup skipped:', e);
-            }
-            // Get Figma render first (for comparison)
-            let figmaRender = null;
-            try {
-              const prev = await requestFigmaRender();
-              const base64 = (prev && typeof prev.base64 === 'string') ? prev.base64 : '';
-              if (base64 && base64.length > 0) {
-                const MAX_BASE64_CHARS = 8_000_000; // ~6MB raw
-                if (base64.length <= MAX_BASE64_CHARS) {
-                  figmaRender = { base64 };
-                } else {
-                  console.warn('[UI] Figma render too large, skip');
-                }
-              }
-            } catch (e) {
-              // Figma render is optional
-            }
-            
-            // Send composition with Figma render
-            await fetch(server + '/api/composition', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ 
-                composition: comp,
-                figmaRender: figmaRender
-              })
-            });
-          } catch (e) {
-            console.warn('[UI] Failed to send composition', e);
-          }
-        } else if (msg.type === 'export-missing-images:result') {
-          if (typeof pendingExportResolve === 'function') {
-            pendingExportResolve({ items: Array.isArray(msg.items) ? msg.items : [] });
-            pendingExportResolve = null;
-          }
-        } else if (msg.type === 'export-figma-render:result') {
-          if (typeof pendingPreviewResolve === 'function') {
-            const base64 = (msg && typeof msg.base64 === 'string') ? msg.base64 : '';
-            pendingPreviewResolve({ base64 });
-            pendingPreviewResolve = null;
-          }
+            success = await processComposition(msg.composition || null, Array.isArray(msg.imageIds) ? msg.imageIds : [], { includeFigmaRender: false, exportBaseDir: msg.targetDir, exportFolderName: msg.exportFolderName || msg.pageName });
+            if (!success) error = '没有可导出的可见图层';
+          } catch (reason) { error = reason && reason.message ? reason.message : String(reason); }
+          parent.postMessage({ pluginMessage: { type: 'batch-export-page:ack', pageId: msg.pageId, success, error } }, '*');
+          return;
+        }
+        if (msg.type === 'batch-export:page-skipped') { setStatus(`已跳过：${msg.pageName || '空对象'}`); return; }
+        if (msg.type === 'batch-export:page-failed') { setStatus(`导出失败：${msg.pageName || '对象'} — ${msg.error || '未知错误'}`, 'error'); return; }
+        if (msg.type === 'batch-export:finished') {
+          const summary = msg.summary || {};
+          setStatus(`导出完成：成功 ${summary.exported || 0}，跳过 ${summary.skipped || 0}，失败 ${summary.failed || 0}`, summary.failed ? 'error' : 'success');
+          batchInProgress = false;
+          updateSelection(selectedItems);
+          return;
+        }
+        if (msg.type === 'export-missing-images:result' && typeof pendingExportResolve === 'function') {
+          pendingExportResolve({ items: Array.isArray(msg.items) ? msg.items : [] });
+          pendingExportResolve = null;
+          return;
+        }
+        if (msg.type === 'export-figma-render:result' && typeof pendingPreviewResolve === 'function') {
+          pendingPreviewResolve({ base64: typeof msg.base64 === 'string' ? msg.base64 : '' });
+          pendingPreviewResolve = null;
         }
       };
 
